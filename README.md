@@ -4,7 +4,13 @@ A specialized tool designed to scan enterprise repositories for cryptographic as
 
 ## Key Features
 -   **Enterprise Scale**: Uses an event-driven architecture (Redis Queue) to process massive repositories asynchronously.
--   **Smart Discovery**: Combines heuristic file analysis (extensions, magic numbers).
+-   **Expanded Discovery**:
+    -   **Code**: Python, JS, Java, Rust, Go.
+    -   **Infra**: Docker, Kubernetes, Terraform.
+    -   **Data**: SQL Dumps, Config Files.
+    -   **Network**: Live TLS/SSL Handshake Analysis.
+    -   **SCA**: Dependency Scanning for known weak libraries (`pycrypto`, `bouncycastle`).
+    -   **History**: "Ghost" Scanning to find deleted secrets in `git log`.
 -   **IaC Ready**: Native support for scanning Terraform (`.tf`) files for weak TLS policies and cryptographic resource definitions.
 -   **Risk Assessment**: Classifies findings based on the NIST PQC Migration Guidelines.
 -   **Docker Native**: Fully containerized for easy local deployment or cloud scaling.

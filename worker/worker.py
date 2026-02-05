@@ -67,12 +67,36 @@ from scanner.patterns import PatternScanner
 import shutil
 import hashlib
 
+from scanner.dependencies import DependencyScanner
+
 def process_analysis(parent_job_id, repo_path, file_path, cleanup=False):
     full_path = Path(repo_path) / file_path
     db_url = os.getenv("DATABASE_URL", "/data/pqc.db").replace("sqlite:///", "")
     
     # Ensuring DB is ready (normally done on startup, but safe here)
     init_db(db_url)
+
+    # --- STEP 1: SCA (Dependency Scan) ---
+    if file_path.endswith(("requirements.txt", "package.json", "pom.xml", "go.mod", "Cargo.toml", "pyproject.toml")):
+        print(f"[{parent_job_id}] 📦 Manifest detected: {file_path}. Running SCA...")
+        sca = DependencyScanner()
+        vulns = sca.scan(full_path)
+        
+        if vulns:
+             # Save SCA results
+             import sqlite3
+             conn = sqlite3.connect(db_url)
+             c = conn.cursor()
+             for item in vulns:
+                # Use parent_job_id as run_id
+                c.execute('''
+                INSERT OR REPLACE INTO inventory (id, path, line, name, category, algorithm, key_size, is_pqc_vulnerable, description, run_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (item.id, item.path, item.line, item.name, item.category, item.algorithm, item.key_size, item.is_pqc_vulnerable, item.description, parent_job_id))
+             conn.commit()
+             conn.close()
+             print(f"[{parent_job_id}] 📦 SCA Found {len(vulns)} issues.")
+             return True # Skip Regex/AI for manifests to save time, or continue? Let's skip.
 
     # 0. Deduplication (Smart Cache)
     try:

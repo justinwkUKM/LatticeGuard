@@ -14,6 +14,27 @@ SUSPICIOUS_EXTENSIONS = {
     ".jks": "Java Keystore",
     ".jceks": "Java JCEKS Keystore",
     ".ovpn": "OpenVPN Config",
+    
+    # SCA Manifests
+    "requirements.txt": "Python Deps",
+    "pyproject.toml": "Python Deps",
+    "package.json": "Node Deps",
+    "pom.xml": "Java Deps",
+    "build.gradle": "Java Deps",
+    "go.mod": "Go Deps",
+    "Cargo.toml": "Rust Deps",
+
+    ".pub": "Public Key",
+    
+    # SCA Manifests
+    "requirements.txt": "Python Deps",
+    "pyproject.toml": "Python Deps",
+    "package.json": "Node Deps",
+    "pom.xml": "Java Deps",
+    "build.gradle": "Java Deps",
+    "go.mod": "Go Deps",
+    "Cargo.toml": "Rust Deps",
+
     ".pub": "Public Key",
     ".asc": "PGP Key",
     ".tf": "Terraform Infrastructure",
