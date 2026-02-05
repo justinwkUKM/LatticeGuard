@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lattice-guard"
+version = "0.1.0"
+description = "Post-Quantum Cryptography Assessment Tool"
+authors = [
+    {name = "Waqas", email = "waqas@example.com"},
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "redis",
+    "pydantic",
+    "requests",
+    "httpx",
+    "typer",
+    "rich",
+    "google-generativeai"
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-asyncio"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["scanner*", "risk*", "agents*", "schemas*", "backend*", "worker*"]
