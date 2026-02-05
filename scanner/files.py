@@ -17,6 +17,17 @@ SUSPICIOUS_EXTENSIONS = {
     ".pub": "Public Key",
     ".asc": "PGP Key",
     ".tf": "Terraform Infrastructure",
+    
+    # Infra & Containers
+    "Dockerfile": "Container Build",
+    ".yaml": "Kubernetes/Helm Config",
+    ".yml": "Kubernetes/Helm Config",
+    
+    # Data & Config
+    ".sql": "SQL Database Dump",
+    ".env": "Environment Config",
+    ".json": "JSON Config/Data",
+    ".xml": "XML Data",
 }
 
 class ArtifactScanner:

@@ -124,11 +124,45 @@ def process_analysis(parent_job_id, repo_path, file_path, cleanup=False):
 
     return True
 
+from scanner.network import NetworkScanner
+
+def process_network_scan(job_id, host):
+    print(f"[{job_id}] 🌐 Starting Network Scan on {host}")
+    db_url = os.getenv("DATABASE_URL", "/data/pqc.db").replace("sqlite:///", "")
+    init_db(db_url)
+    
+    scanner = NetworkScanner(host)
+    items = scanner.scan()
+    
+    # Save to Inventory
+    conn = redis_client  # Hack: reusing redis connection variable name for simplicity? No wait.
+    # Need to use save_suspects? No, NetworkScanner returns InventoryItem objects directly.
+    # Let's save them manually to DB for now or standardize.
+    
+    import sqlite3
+    conn = sqlite3.connect(db_url)
+    c = conn.cursor()
+    
+    for item in items:
+        c.execute('''
+        INSERT OR REPLACE INTO inventory (id, path, line, name, category, algorithm, key_size, is_pqc_vulnerable, description, run_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (item.id, item.path, item.line, item.name, item.category, item.algorithm, item.key_size, item.is_pqc_vulnerable, item.description, job_id))
+    
+    conn.commit()
+    conn.close()
+    
+    print(f"[{job_id}] ✅ Network Scan Complete. Found {len(items)} ciphers.")
+    return True
+
 def process_task(task_data):
     task_type = task_data.get("type", "UNKNOWN")
     
     if task_type == "SCAN_REPO":
         return process_discovery(task_data.get("job_id"), task_data.get("repo_path"))
+
+    elif task_type == "SCAN_HOST":
+        return process_network_scan(task_data.get("job_id"), task_data.get("host"))
         
     elif task_type == "ANALYZE_FILE":
         return process_analysis(

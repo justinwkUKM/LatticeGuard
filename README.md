@@ -1,4 +1,4 @@
-# LatticeGuard 🛡️ - Post-Quantum Cryptography (PQC) Assessment Tool
+# LatticeGuard - Post-Quantum Cryptography (PQC) Assessment Tool
 
 A specialized tool designed to scan enterprise repositories for cryptographic assets, assess their vulnerability to Quantum Computers (Shor's Algorithm), and generate compliance reports (SARIF/Markdown).
 

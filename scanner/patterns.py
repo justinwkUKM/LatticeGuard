@@ -15,6 +15,15 @@ CRYPTO_PATTERNS = {
     "Generic_Secret": r"(api_key|secret_key|private_key)\s*[:=]\s*['\"][A-Za-z0-9+/=]{20,}['\"]",
     "Terraform_RSA": r'algorithm\s*=\s*"RSA"',
     "Terraform_Legacy_TLS": r'min_tls_version\s*=\s*"1\.[01]"',
+    
+    # Extended Infra (Docker/K8s)
+    "Docker_Secret": r'(?i)ENV\s+(?:\w*_)?(SECRET|KEY|PASSWORD|TOKEN)\s*=',
+    "K8s_Secret": r'(?i)kind:\s*Secret',
+    
+    # High Entropy / Hardcoded (Generic)
+    "AWS_Key": r'(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}',
+    "Generic_Token": r'(?i)(api_key|access_token|secret)\s*[:=]\s*[\'"][a-zA-Z0-9_\-]{32,}[\'"]',
+    "SQL_Key_Insert": r'(?i)INSERT\s+INTO.*VALUES.*\s*[\'"](ssh-rsa|BEGIN\s+PRIVATE\s+KEY)',
 }
 
 class PatternScanner:
