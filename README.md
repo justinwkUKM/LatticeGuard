@@ -2,14 +2,14 @@
 
 A specialized tool designed to scan enterprise repositories for cryptographic assets, assess their vulnerability to Quantum Computers (Shor's Algorithm), and generate compliance reports (SARIF/Markdown).
 
-## 🚀 Key Features
+## Key Features
 -   **Enterprise Scale**: Uses an event-driven architecture (Redis Queue) to process massive repositories asynchronously.
 -   **Smart Discovery**: Combines heuristic file analysis (extensions, magic numbers).
 -   **IaC Ready**: Native support for scanning Terraform (`.tf`) files for weak TLS policies and cryptographic resource definitions.
 -   **Risk Assessment**: Classifies findings based on the NIST PQC Migration Guidelines.
 -   **Docker Native**: Fully containerized for easy local deployment or cloud scaling.
 
-## 🏗 Architecture
+## Architecture
 
 The system consists of three main components orchestrated via Docker Compose:
 
@@ -27,7 +27,7 @@ graph TD
     Worker -->|Save| DB[(SQLite/Postgres)]
 ```
 
-## 🔍 Discovery Process
+## Discovery Process
 
 The discovery engine operates in two stages to maximize speed and accuracy:
 
@@ -38,7 +38,7 @@ The discovery engine operates in two stages to maximize speed and accuracy:
     -   For complex code blocks or custom implementations, the file content is sent to **Gemini 3 Pro**.
     -   The AI determines if the code implements a Quantum-Vulnerable algorithm (e.g., RSA, ECC) or a Quantum-Safe one (e.g., Kyber, Dilithium).
 
-## 🛡 Risk Assessment Logic
+## Risk Assessment Logic
 
 Findings are categorized into risk levels based on their resistance to Quantum Attacks:
 
@@ -49,7 +49,7 @@ Findings are categorized into risk levels based on their resistance to Quantum A
 | **LOW** | Quantum Safe or Robust Symmetric | AES-256, SHA-3, Kyber-768 |
 | **INFO** | Configuration or Non-Critical | TLS Versions, Random Number Generators |
 
-## � Real-World Use Cases
+## Real-World Use Cases
 
 ### 1. Enterprise Audit & Migration Planning
 **Scenario**: A financial institution needs to migrate 5,000 microservices to Quantum-Safe algorithms by 2028.
@@ -66,11 +66,11 @@ Findings are categorized into risk levels based on their resistance to Quantum A
 -   **Solution**: Integrate the scanner into GitHub Actions / Jenkins.
 -   **Outcome**: The build fails if `scanner/patterns.py` detects usage of `MD5` or `DES` in the diff, providing immediate feedback to the developer.
 
-## 🛠️ Usage Guidelines
+## Usage Guidelines
 
 LatticeGuard can be operated via its REST API or the specialized CLI tools.
 
-### 🌐 Backend API Reference
+### Backend API Reference
 
 The API runs on `http://localhost:8000` by default.
 
@@ -95,7 +95,7 @@ Aggregates findings across all jobs to provide a "Leadership Dashboard" view.
 curl http://localhost:8000/reports/summary
 ```
 
-### 💻 CLI & Automation
+### CLI & Automation
 
 #### 1. Scan an Entire GitHub Organization
 Use the `org_scanner.py` tool to crawl an organization and trigger LatticeGuard.
@@ -113,7 +113,7 @@ For local testing without the full API stack:
 python3 cli/main.py scan ./local-folder
 ```
 
-## 🚀 Getting Started
+## Getting Started
 
 1.  **Environment Setup**:
     Copy `.env.example` to `.env` and add your `GEMINI_API_KEY`.
@@ -126,7 +126,7 @@ python3 cli/main.py scan ./local-folder
     docker-compose up --scale worker=10 -d
     ```
 
-## 🧪 Testing
+## Testing
 Run the comprehensive test suite inside the container environment:
 ```bash
 docker-compose run worker pytest
