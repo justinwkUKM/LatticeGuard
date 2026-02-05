@@ -66,39 +66,68 @@ Findings are categorized into risk levels based on their resistance to Quantum A
 -   **Solution**: Integrate the scanner into GitHub Actions / Jenkins.
 -   **Outcome**: The build fails if `scanner/patterns.py` detects usage of `MD5` or `DES` in the diff, providing immediate feedback to the developer.
 
-## �🛠 Getting Started
+## 🛠️ Usage Guidelines
 
-### Prerequisites
--   Docker & Docker Compose
--   Google Gemini API Key
+LatticeGuard can be operated via its REST API or the specialized CLI tools.
 
-### Installation & Run
+### 🌐 Backend API Reference
 
-1.  Clone the repository:
+The API runs on `http://localhost:8000` by default.
+
+#### 1. Start a Single Repository Scan
+```bash
+curl -X POST http://localhost:8000/scan \
+     -H "Content-Type: application/json" \
+     -d '{"repo_path": "https://github.com/google/guava.git", "scan_type": "full"}'
+```
+
+#### 2. Start a Batch Scan (Financial Context / Microservices)
+Submit a list of repository URLs to be processed in parallel across the worker fleet.
+```bash
+curl -X POST http://localhost:8000/batch/scan \
+     -H "Content-Type: application/json" \
+     -d '["https://github.com/org/repo1.git", "https://github.com/org/repo2.git"]'
+```
+
+#### 3. Get Organization-Wide Risk Summary
+Aggregates findings across all jobs to provide a "Leadership Dashboard" view.
+```bash
+curl http://localhost:8000/reports/summary
+```
+
+### 💻 CLI & Automation
+
+#### 1. Scan an Entire GitHub Organization
+Use the `org_scanner.py` tool to crawl an organization and trigger LatticeGuard.
+```bash
+# Set your GitHub token first
+export GITHUB_TOKEN="your_token"
+
+# Run the scanner
+python3 cli/org_scanner.py "your-org-name"
+```
+
+#### 2. Interactive CLI (Development)
+For local testing without the full API stack:
+```bash
+python3 cli/main.py scan ./local-folder
+```
+
+## 🚀 Getting Started
+
+1.  **Environment Setup**:
+    Copy `.env.example` to `.env` and add your `GEMINI_API_KEY`.
+2.  **Start Services**:
     ```bash
-    git clone https://github.com/your-org/pqc-assessment.git
-    cd pqc-assessment
+    docker-compose up --build -d
     ```
-
-2.  Set your API Key:
+3.  **Scale Workers** (Optional - For Enterprise Scale):
     ```bash
-    export GEMINI_API_KEY="your_api_key_here"
-    ```
-
-3.  Start the stack:
-    ```bash
-    docker-compose up --build
-    ```
-
-4.  Trigger a scan (Example):
-    ```bash
-    curl -X POST http://localhost:8000/scan \
-         -H "Content-Type: application/json" \
-         -d '{"repo_path": "/app/targets/my-repo", "scan_type": "full"}'
+    docker-compose up --scale worker=10 -d
     ```
 
 ## 🧪 Testing
-Run the comprehensive test suite:
+Run the comprehensive test suite inside the container environment:
 ```bash
 docker-compose run worker pytest
 ```
