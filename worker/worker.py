@@ -65,6 +65,7 @@ def process_discovery(job_id, repo_path):
 
 from scanner.patterns import PatternScanner
 import shutil
+import hashlib
 
 def process_analysis(parent_job_id, repo_path, file_path, cleanup=False):
     full_path = Path(repo_path) / file_path
@@ -73,11 +74,26 @@ def process_analysis(parent_job_id, repo_path, file_path, cleanup=False):
     # Ensuring DB is ready (normally done on startup, but safe here)
     init_db(db_url)
 
+    # 0. Deduplication (Smart Cache)
+    try:
+        with open(full_path, "rb") as f:
+            file_hash = hashlib.sha256(f.read()).hexdigest()
+        
+        # Check cache
+        cached_result = redis_client.get(f"pqc_cache:{file_hash}")
+        if cached_result:
+            print(f"[{parent_job_id}] ⚡️ Cache Hit for {file_path}. Skipping analysis.")
+            return True
+    except Exception as e:
+        print(f"[{parent_job_id}] ⚠️ Deduplication failed (hashing error): {e}")
+
     # 1. Advanced Scanning (Regex/Patterns)
     scanner = PatternScanner(repo_path)
     suspects = scanner.scan_file(full_path)
     
     if not suspects:
+        # Mark as safe in cache (TTL 24h)
+        redis_client.setex(f"pqc_cache:{file_hash}", 86400, "safe")
         return True
         
     print(f"[{parent_job_id}] ⚠️ Found {len(suspects)} patterns in {file_path}. Saving suspects...")
@@ -86,9 +102,17 @@ def process_analysis(parent_job_id, repo_path, file_path, cleanup=False):
     save_suspects(db_url, parent_job_id, suspects)
     
     # 2. Deep Check (AI)
-    gemini_model = os.getenv("GEMINI_MODEL", "gemini-3-pro-preview")
-    print(f"[{parent_job_id}] 🧠 Escalating to {gemini_model} for analysis...")
-    # ai_result =  gemini_analyst.analyze(full_path, suspects, model=gemini_model)
+    # Tiered Analysis: Flash -> Pro
+    try:
+        from agents.file_analyst import FileAnalystAgent
+        # Using correct DB Path mapped in Docker
+        agent = FileAnalystAgent("/data/pqc.db")
+        agent.analyze_file_tiered(str(full_path), suspects, parent_job_id)
+    except Exception as e:
+        print(f"[{parent_job_id}] ❌ AI Analysis Failed: {e}")
+    
+    # Cache result as "analyzed"
+    redis_client.setex(f"pqc_cache:{file_hash}", 86400, "risk_found")
     
     # Cleanup if this was a remote clone
     if cleanup and os.path.exists(repo_path):
