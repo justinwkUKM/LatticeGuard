@@ -11,6 +11,7 @@ redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
 print(f"Worker started. Listening on {REDIS_HOST}:{REDIS_PORT}...")
 
 from scanner.files import ArtifactScanner
+from scanner.db import save_suspects, init_db
 from pathlib import Path
 
 # ... (Previous Redis setup remains)
@@ -63,26 +64,40 @@ def process_discovery(job_id, repo_path):
     return True
 
 from scanner.patterns import PatternScanner
+import shutil
 
-def process_analysis(parent_job_id, repo_path, file_path):
+def process_analysis(parent_job_id, repo_path, file_path, cleanup=False):
     full_path = Path(repo_path) / file_path
+    db_url = os.getenv("DATABASE_URL", "/data/pqc.db").replace("sqlite:///", "")
     
+    # Ensuring DB is ready (normally done on startup, but safe here)
+    init_db(db_url)
+
     # 1. Advanced Scanning (Regex/Patterns)
     scanner = PatternScanner(repo_path)
     suspects = scanner.scan_file(full_path)
     
     if not suspects:
-        # Optimization: No crypto patterns found? Don't waste AI tokens.
-        # print(f"[{parent_job_id}] 💤 No patterns in {file_path}. Skipping AI.")
         return True
         
-    print(f"[{parent_job_id}] ⚠️ Found {len(suspects)} patterns in {file_path}. Escalating to AI...")
+    print(f"[{parent_job_id}] ⚠️ Found {len(suspects)} patterns in {file_path}. Saving suspects...")
+    
+    # Save findings to DB
+    save_suspects(db_url, parent_job_id, suspects)
     
     # 2. Deep Check (AI)
     gemini_model = os.getenv("GEMINI_MODEL", "gemini-3-pro-preview")
     print(f"[{parent_job_id}] 🧠 Escalating to {gemini_model} for analysis...")
     # ai_result =  gemini_analyst.analyze(full_path, suspects, model=gemini_model)
     
+    # Cleanup if this was a remote clone
+    if cleanup and os.path.exists(repo_path):
+        # Note: In a production fan-out, we'd only cleanup after ALL files are done.
+        # But for this MVP, we want to avoid disk bloat.
+        # If we delete here, other file analyses for the same repo will fail.
+        # CORRECT LOGIC: Cleanup should happen in a separate MONITOR task.
+        pass
+
     return True
 
 def process_task(task_data):
@@ -95,7 +110,8 @@ def process_task(task_data):
         return process_analysis(
             task_data.get("parent_job_id"), 
             task_data.get("repo_path"),
-            task_data.get("file_path")
+            task_data.get("file_path"),
+            task_data.get("cleanup", False)
         )
         
     elif "job_id" in task_data: 

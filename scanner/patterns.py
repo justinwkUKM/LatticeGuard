@@ -25,6 +25,11 @@ class PatternScanner:
     def scan_file(self, file_path: Path) -> List[Suspect]:
         suspects = []
         try:
+            # Avoid OOM for extremely large files
+            if file_path.stat().st_size > 5 * 1024 * 1024:
+                print(f"Warning: Skipping large file {file_path} (>5MB)")
+                return suspects
+                
             with open(file_path, 'r', errors='ignore') as f:
                 content = f.read()
                 
