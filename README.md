@@ -153,6 +153,20 @@ For local testing without the full API stack:
 python3 cli/main.py scan ./local-folder
 ```
 
+### Local Scanning
+By default, LatticeGuard restricts scans to **remote git URLs** (e.g., `https://github.com/...`) for security.
+To scan directories on your local machine (or the worker's filesystem), you must explicitly enable it:
+
+```bash
+# 1. Export the security flag
+export ALLOW_LOCAL_SCAN="true"
+
+# 2. Run the scan
+python3 cli/main.py scan /Users/yourname/projects/my-repo
+```
+
+> **Note**: When running via Docker, "local" refers to the *container's* filesystem. You will need to mount your local source code into the worker container (e.g., via `-v /my-src:/data/source`) to scan it.
+
 ## Configuration
 
 ### AI Provider Setup
