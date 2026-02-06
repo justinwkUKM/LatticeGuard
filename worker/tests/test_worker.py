@@ -10,8 +10,8 @@ def test_process_task_success(capsys):
     assert result is True
     
     captured = capsys.readouterr()
-    assert "[job-123] Processing repo: ./test-repo" in captured.out
-    assert "[job-123] Scan complete." in captured.out
+    assert "[job-123] 🔍 Starting Discovery on ./test-repo" in captured.out
+    assert "[job-123] 🚀 Discovered 0 files. Queued for analysis." in captured.out
 
 def test_process_task_invalid():
     # Missing fields

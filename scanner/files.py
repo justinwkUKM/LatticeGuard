@@ -58,8 +58,12 @@ class ArtifactScanner:
     def scan(self):
         """
         Yields relative file paths to be analyzed.
+        SECURITY: followlinks=False prevents symlink traversal attacks.
         """
-        for dirpath, _, filenames in os.walk(self.repo_path):
+        for dirpath, dirnames, filenames in os.walk(self.repo_path, followlinks=False):
+            # Explicitly ignore .git and hidden metadata directories
+            dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+            
             for f in filenames:
                 # Basic Binary Exclusion (can be improved)
                 if f.endswith(('.pyc', '.o', '.bin', '.exe', '.dll', '.so')):

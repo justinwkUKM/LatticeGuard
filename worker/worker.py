@@ -20,6 +20,10 @@ import subprocess
 import shutil
 
 def process_discovery(job_id, repo_path):
+    if not repo_path:
+        print(f"[{job_id}] ❌ Error: No repo_path provided.")
+        return False
+
     target_path = repo_path
     is_temp = False
     
@@ -30,8 +34,9 @@ def process_discovery(job_id, repo_path):
         target_path = f"/data/temp/{job_id}"
         
         # Clone strategy: Partial clone for speed
+        # SECURITY: Use '--' to prevent argument injection from repo_path
         try:
-            subprocess.run(["git", "clone", "--depth", "1", repo_path, target_path], check=True)
+            subprocess.run(["git", "clone", "--depth", "1", "--", repo_path, target_path], check=True, timeout=300)
             print(f"[{job_id}] ✅ Cloned to {target_path}")
         except subprocess.CalledProcessError as e:
             print(f"[{job_id}] ❌ Clone Failed: {e}")

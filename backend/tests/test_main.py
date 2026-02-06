@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 from main import app
 import pytest
+import os
 from unittest.mock import MagicMock, patch
 
 client = TestClient(app)
@@ -15,7 +16,8 @@ def test_trigger_scan(mock_redis):
     # Mock Redis lpush to avoid actual connection
     mock_redis.lpush.return_value = 1
     
-    response = client.post("/scan", json={"repo_path": "/tmp/test-repo"})
+    with patch.dict(os.environ, {"ALLOW_LOCAL_SCAN": "true"}):
+        response = client.post("/scan", json={"repo_path": "/tmp/test-repo"})
     
     assert response.status_code == 200
     data = response.json()
@@ -41,6 +43,6 @@ def test_redis_failure(mock_redis):
     import redis
     mock_redis.lpush.side_effect = redis.ConnectionError("Boom")
     
-    response = client.post("/scan", json={"repo_path": "/tmp/test-repo"})
+    response = client.post("/scan", json={"repo_path": "https://github.com/fake/repo.git"})
     assert response.status_code == 500
-    assert response.json()["detail"] == "Could not connect to Redis Task Queue"
+    assert response.json()["detail"] == "LatticeGuard Message Queue (Redis) is offline."

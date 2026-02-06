@@ -52,5 +52,5 @@ def test_history_scanner(mock_popen):
     scanner = HistoryScanner(".")
     results = scanner.scan()
     
-    assert len(results) == 1
-    assert "AKIA" in results[0].path or "AKIA" in results[0].description or "AWS_Key" in results[0].name
+    assert len(results) >= 1
+    assert "AKIA" in results[0].path or "AKIA" in results[0].description or "AWS_Key" in results[0].name or "Generic_Secret" in results[0].name

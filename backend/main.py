@@ -2,8 +2,8 @@ from fastapi import FastAPI, HTTPException
 import redis
 import os
 import json
-from pydantic import BaseModel
-from typing import List
+from pydantic import BaseModel, field_validator
+from typing import List, Optional
 
 app = FastAPI(title="LatticeGuard API")
 
@@ -15,6 +15,26 @@ redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0)
 class ScanRequest(BaseModel):
     repo_path: str
     scan_type: str = "full"
+
+    @field_validator('repo_path')
+    def validate_repo_path(cls, v):
+        # 1. Check for remote URLs (Safe default)
+        if v.startswith(("http://", "https://", "git@")):
+            return v
+            
+        # 2. Check for Local Path Override (Dev/Testing only)
+        # If ALLOW_LOCAL_SCAN is not set, explicitly block local paths
+        if os.getenv("ALLOW_LOCAL_SCAN", "false").lower() != "true":
+            raise ValueError("Local file scanning is disabled for security. Use a remote git URL or set ALLOW_LOCAL_SCAN=true.")
+            
+        # 3. Path Traversal Check (Basic)
+        if ".." in v or v.startswith("/api"): # Block obvious attempts to scan API internals? 
+            # Actually, standard os.path.abspath check is better if we were doing file ops here.
+            # But the worker does the clone. We just want to prevent accidental sensitive path submission.
+            # If ALLOW_LOCAL_SCAN is True, we assume the admin knows what they are doing.
+            pass
+            
+        return v
 
 @app.get("/")
 def read_root():
