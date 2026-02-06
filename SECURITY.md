@@ -11,6 +11,8 @@
 
 We take the security of `LatticeGuard` seriously. If you have found a vulnerability, please do not open an issue on GitHub. Instead, please report it via email.
 
+> **Why Email?** Publicly disclosing a vulnerability before a fix is available (Zero-Day) puts the entire community at risk. Reporting privately allows us to release a patch safely before the issue becomes public knowledge (Responsible Disclosure).
+
 ### How to Report
 
 Please email us at **waqasobeidy@gmail.com** with the subject line `[SECURITY] Vulnerability Report`.
