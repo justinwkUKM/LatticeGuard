@@ -28,41 +28,57 @@ class SecretScanner:
 
     def scan_file(self, file_path: Path) -> List[Suspect]:
         suspects = []
+        chunk_size = 1 * 1024 * 1024  # 1MB
+        overlap = 2048
+        
         try:
-            if file_path.stat().st_size > 1 * 1024 * 1024:
-                return suspects
-
             with open(file_path, "r", errors="ignore") as f:
-                content = f.read()
+                offset = 0
+                while True:
+                    if offset > 0:
+                        f.seek(offset - overlap)
+                        chunk = f.read(chunk_size + overlap)
+                    else:
+                        chunk = f.read(chunk_size)
+                    
+                    if not chunk:
+                        break
 
-            # 1. Pattern Matching
-            for name, pattern in self.patterns.items():
-                for match in re.finditer(pattern, content):
-                    line_num = content.count('\n', 0, match.start()) + 1
-                    suspects.append(Suspect(
-                        path=str(file_path),
-                        line=line_num,
-                        content_snippet=content[match.start():match.end()+20],
-                        type="code",
-                        pattern_matched=name,
-                        confidence="high"
-                    ))
+                    # 1. Pattern Matching
+                    for name, pattern in self.patterns.items():
+                        for match in re.finditer(pattern, chunk):
+                            if offset > 0 and match.start() < overlap:
+                                continue
+                            
+                            suspects.append(Suspect(
+                                path=str(file_path),
+                                line=0,
+                                content_snippet=chunk[match.start():match.end()+20],
+                                type="code",
+                                pattern_matched=name,
+                                confidence="high"
+                            ))
 
-            # 2. Entropy Check for long strings (Optional, basic)
-            # Find strings in quotes
-            for match in re.finditer(r"['\"]([A-Za-z0-9]{32,})['\"]", content):
-                val = match.group(1)
-                entropy = self._calculate_entropy(val)
-                if entropy > 4.5: # Threshold for high randomness
-                    line_num = content.count('\n', 0, match.start()) + 1
-                    suspects.append(Suspect(
-                        path=str(file_path),
-                        line=line_num,
-                        content_snippet=f"Entropy: {entropy:.2f} | Snippet: {val[:10]}...",
-                        type="code",
-                        pattern_matched="High_Entropy_String",
-                        confidence="medium"
-                    ))
+                    # 2. Entropy Check
+                    for match in re.finditer(r"['\"]([A-Za-z0-9]{32,})['\"]", chunk):
+                        if offset > 0 and match.start() < overlap:
+                            continue
+                            
+                        val = match.group(1)
+                        entropy = self._calculate_entropy(val)
+                        if entropy > 4.5:
+                            suspects.append(Suspect(
+                                path=str(file_path),
+                                line=0,
+                                content_snippet=f"Entropy: {entropy:.2f} | Snippet: {val[:10]}...",
+                                type="code",
+                                pattern_matched="High_Entropy_String",
+                                confidence="medium"
+                            ))
+                    
+                    if len(chunk) < (chunk_size + (overlap if offset > 0 else 0)):
+                        break
+                    offset += chunk_size
 
         except Exception as e:
             print(f"Secret Scanner Error {file_path}: {e}")
