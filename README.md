@@ -199,6 +199,10 @@ LatticeGuard defaults to the **Google Native** provider (`google-generativeai`).
     export LITELLM_MODEL="gemini/gemini-1.5-pro"
     ```
 
+    > **⚠️ Important LiteLLM Note**: 
+    > If `GEMINI_FLASH_MODEL` or `GEMINI_PRO_MODEL` are set in your environment (or `.env`), they will **take precedence** over `LITELLM_MODEL` for specific agent tasks. 
+    > If using a non-Gemini provider (e.g. OpenAI), ensure you override these to match your target model (e.g., `export GEMINI_FLASH_MODEL="gpt-4o-mini"`).
+
 ## Getting Started
 
 1.  **Environment Setup**:
