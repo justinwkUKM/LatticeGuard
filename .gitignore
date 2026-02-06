@@ -76,3 +76,6 @@ output/
 .env
 .env.local
 .env.*.local
+
+# Test samples (may contain fake secrets for scanner testing)
+tests/samples/
