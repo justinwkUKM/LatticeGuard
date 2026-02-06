@@ -1,7 +1,7 @@
 import os
 import sqlite3
 import json
-import google.generativeai as genai
+from backend.ai_client import AIClient
 from typing import List, Optional
 from schemas.models import InventoryItem
 
@@ -10,12 +10,7 @@ class FileAnalystAgent:
         self.db_path = db_path
         self.flash_model_name = os.getenv("GEMINI_FLASH_MODEL", "gemini-3-flash-preview")
         self.pro_model_name = os.getenv("GEMINI_PRO_MODEL", "gemini-3-pro-preview")
-        self.api_key = os.getenv("GEMINI_API_KEY")
-        
-        if self.api_key:
-            genai.configure(api_key=self.api_key)
-        else:
-            print("Warning: GEMINI_API_KEY not set. AI analysis will fail.")
+        self.ai = AIClient()
 
     def analyze_file_tiered(self, file_path: str, suspects: List[object], run_id: str):
         """
@@ -65,9 +60,7 @@ class FileAnalystAgent:
         Reply strictly valid JSON: {{"is_relevant": true}} or {{"is_relevant": false}}
         """
         try:
-            model = genai.GenerativeModel(self.flash_model_name)
-            response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
-            res_json = json.loads(response.text)
+            res_json = self.ai.generate_json(prompt, self.flash_model_name)
             return res_json.get("is_relevant", False)
         except Exception as e:
             print(f"Tier 1 Error: {e}")
@@ -83,9 +76,13 @@ class FileAnalystAgent:
         
         Task:
         1. Identify the Algorithm (e.g. RSA-2048, AES-GCM, ECDSA-P256).
-        2. Assess Quantum Vulnerability (Shor/Grover).
-           - VULNERABLE: RSA, DH, ECC, DSA
-           - SAFE: AES-256, SHA-3, Kyber, Dilithium
+        2. Assess Quantum Vulnerability.
+           - SHOR'S ALGO (Asymmetric):
+             * VULNERABLE: RSA, DH, ECC, DSA, ECDSA.
+             * SAFE: Kyber, Dilithium, Falcon, SPHINCS+.
+           - GROVER'S ALGO (Symmetric):
+             * VULNERABLE: AES-128, SHA-256 (Weak collision resistance), DES/3DES.
+             * SAFE: AES-256, SHA-384, SHA-512, ChaCha20-Poly1305.
         3. Extract Key Size if visible.
         
         Output JSON List:
@@ -102,9 +99,7 @@ class FileAnalystAgent:
         ]
         """
         try:
-            model = genai.GenerativeModel(self.pro_model_name)
-            response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
-            return json.loads(response.text)
+            return self.ai.generate_json(prompt, self.pro_model_name)
         except Exception as e:
              print(f"Tier 2 Error: {e}")
              return []

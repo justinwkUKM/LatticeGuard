@@ -12,7 +12,10 @@ class DependencyScanner:
             "crypto-js": "Legacy JS Crypto. Check for weak algo usage.",
             "node-rsa": "Common RSA impl. Vulnerable to Shor's.",
             # Java
-            "bouncycastle": "Check version. Pre-1.78 is often weak vs PQC."
+            "bouncycastle": "Check version. Pre-1.78 is often weak vs PQC.",
+            # General/Other
+            "paramiko": "SSHv1/v2 impl. Check for weak KEX usage.",
+            "hazmat": "Low-level crypto primitives. High risk of misuse."
         }
 
     def scan(self, file_path: Path) -> List[InventoryItem]:

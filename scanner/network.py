@@ -28,16 +28,18 @@ class NetworkScanner:
                     cipher_name = cipher_info[0]
                     protocol = cipher_info[1]
                     
-                    # Logic: Currently ALL standard TLS is vulnerable (RSA/ECC)
-                    # Quantum Safe would be "Kyber" or specific Hybrid IDs
-                    
                     is_vulnerable = True
                     reasoning = f"Uses classical Key Exchange ({cipher_name})"
                     
-                    # Check for PQC indicators (Theoretical/Future proofing)
+                    # PQC Analysis
                     if "Kyber" in cipher_name or "Dilithium" in cipher_name:
-                        is_vulnerable = False
-                        reasoning = "Quantum-Safe Key Exchange Detected"
+                         # Check for Hybrid (e.g. X25519Kyber768)
+                         if "X25519" in cipher_name or "ECDHE" in cipher_name:
+                             is_vulnerable = False
+                             reasoning = "Hybrid Key Exchange Detected (Classical + PQC)"
+                         else:
+                             is_vulnerable = False
+                             reasoning = "Pure Quantum-Safe Key Exchange Detected"
                         
                     results.append(InventoryItem(
                         id=f"{self.target_host}:{self.port}",

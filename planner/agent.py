@@ -1,19 +1,16 @@
 import os
 import json
-import google.generativeai as genai
+import json
 from pathlib import Path
 from typing import List, Optional
+from backend.ai_client import AIClient
 from planner.fingerprint import RepoFingerprinter
 from schemas.models import ScanPlan, ScanBudget
 
 class PlannerAgent:
     def __init__(self, model_name: str = "gemini-2.0-flash"):
         self.model_name = model_name
-        self.api_key = os.getenv("GOOGLE_API_KEY")
-        if self.api_key:
-            genai.configure(api_key=self.api_key)
-        else:
-            print("Warning: GOOGLE_API_KEY not found. Agent will fail if called.")
+        self.ai = AIClient()
 
     def generate_plan(self, 
                       repo_path: str, 
@@ -59,11 +56,9 @@ class PlannerAgent:
         3. Return ONLY valid JSON.
         """
 
-        # 3. Call Gemini
+        # 3. Call AI
         try:
-            model = genai.GenerativeModel(self.model_name)
-            response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
-            plan_json = json.loads(response.text)
+            plan_json = self.ai.generate_json(prompt, self.model_name)
             
             # 4. Validate & Return
             plan = ScanPlan(**plan_json)
