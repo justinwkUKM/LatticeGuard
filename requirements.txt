@@ -1,5 +1,1 @@
-google-generativeai
-litellm>=1.0.0
-pydantic
-typer
-rich
+numpy==1.24.0

@@ -5,35 +5,27 @@ from scanner.history import HistoryScanner
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-def test_dependency_scanner_finding():
-    # Setup dummy requirements.txt
+def test_dependency_scanner_finding(tmp_path):
+    # Setup dummy requirements.txt in temp directory
     content = "pycrypto==2.6.1\nrequests==2.31.0"
-    path = Path("requirements.txt")
-    with open(path, "w") as f:
-        f.write(content)
+    path = tmp_path / "requirements.txt"
+    path.write_text(content)
         
-    scanner = DependencyScanner()
-    results = scanner.scan(path)
-    
-    # Cleanup
-    os.remove(path)
+    scanner = DependencyScanner(str(tmp_path))
+    results = scanner.scan()
     
     assert len(results) >= 1
-    assert results[0].name == "Vulnerable Dependency (pycrypto)"
-    assert results[0].is_pqc_vulnerable == True
+    assert "pycrypto" in results[0].pattern_matched
+    assert results[0].confidence == "high"
 
-def test_dependency_scanner_safe():
-    # Setup safe requirements.txt
+def test_dependency_scanner_safe(tmp_path):
+    # Setup safe requirements.txt in temp directory
     content = "numpy==1.24.0"
-    path = Path("requirements.txt")
-    with open(path, "w") as f:
-        f.write(content)
+    path = tmp_path / "requirements.txt"
+    path.write_text(content)
         
-    scanner = DependencyScanner()
-    results = scanner.scan(path)
-    
-    # Cleanup
-    os.remove(path)
+    scanner = DependencyScanner(str(tmp_path))
+    results = scanner.scan()
     
     assert len(results) == 0
 

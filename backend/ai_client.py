@@ -13,15 +13,18 @@ class AIClient:
         self.api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         
         # Default models (can be overridden by env vars)
-        self.default_flash_model = os.getenv("GEMINI_FLASH_MODEL", "gemini-2.0-flash")
-        self.default_pro_model = os.getenv("GEMINI_PRO_MODEL", "gemini-2.0-pro-exp-02-05")
+        self.default_flash_model = os.getenv("GEMINI_FLASH_MODEL", "gemini-3-flash-preview")
+        self.default_pro_model = os.getenv("GEMINI_PRO_MODEL", "gemini-3-flash-preview")
+        
+        # Initialize the appropriate client
+        self._google_client = None
         
         if self.provider == "google":
-            import google.generativeai as genai
+            from google import genai
             if self.api_key:
-                genai.configure(api_key=self.api_key)
+                self._google_client = genai.Client(api_key=self.api_key)
             else:
-                logger.warning("GOOGLE_API_KEY not found. Native Gemini calls will fail.")
+                logger.warning("GEMINI_API_KEY not found. Native Gemini calls will fail.")
         elif self.provider == "litellm":
             try:
                 import litellm
@@ -58,15 +61,28 @@ class AIClient:
             return self._generate_google(prompt, target_model, json_mode=True)
 
     def _generate_google(self, prompt: str, model_name: str, json_mode: bool = False) -> tuple[Any, Dict[str, int]]:
-        import google.generativeai as genai
+        from google import genai
+        from google.genai import types
         
         try:
-            model = genai.GenerativeModel(model_name)
-            config = {"response_mime_type": "application/json"} if json_mode else {}
+            # Use the centralized client
+            if self._google_client is None:
+                self._google_client = genai.Client(api_key=self.api_key)
             
-            response = model.generate_content(prompt, generation_config=config)
+            # Build generation config
+            config = None
+            if json_mode:
+                config = types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
             
-            # Extract usage
+            response = self._google_client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=config
+            )
+            
+            # Extract usage from the new SDK format
             usage = {
                 "input_tokens": response.usage_metadata.prompt_token_count,
                 "output_tokens": response.usage_metadata.candidates_token_count
@@ -77,7 +93,7 @@ class AIClient:
             return response.text, usage
             
         except Exception as e:
-            logger.error(f"Google Native Generative AI Error: {e}")
+            logger.error(f"Google GenAI Error: {e}")
             raise
 
     def _generate_litellm(self, prompt: str, model_name: str, json_mode: bool = False) -> tuple[Any, Dict[str, int]]:
@@ -120,6 +136,7 @@ class AIClient:
         except Exception as e:
             logger.error(f"LiteLLM Error: {e}")
             raise
+
     def generate_multimodal(self, prompt: str, data: bytes, mime_type: str, model_name: Optional[str] = None) -> tuple[Any, Dict[str, int]]:
         """
         Generates content from multimodal input (text + data).
@@ -128,21 +145,30 @@ class AIClient:
         target_model = model_name or self.default_flash_model
         
         if self.provider == "google":
-            import google.generativeai as genai
+            from google import genai
+            from google.genai import types
+            
             try:
-                model = genai.GenerativeModel(target_model)
-                # For Gemini, multimodal input is a list of parts
-                content = [
+                # Use the centralized client
+                if self._google_client is None:
+                    self._google_client = genai.Client(api_key=self.api_key)
+                
+                # For the new SDK, multimodal input uses Part objects
+                content_parts = [
                     prompt,
-                    {
-                        "mime_type": mime_type,
-                        "data": data
-                    }
+                    types.Part.from_bytes(data=data, mime_type=mime_type)
                 ]
                 
                 # We expect JSON output for document analysis usually
-                config = {"response_mime_type": "application/json"}
-                response = model.generate_content(content, generation_config=config)
+                config = types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
+                
+                response = self._google_client.models.generate_content(
+                    model=target_model,
+                    contents=content_parts,
+                    config=config
+                )
                 
                 usage = {
                     "input_tokens": response.usage_metadata.prompt_token_count,

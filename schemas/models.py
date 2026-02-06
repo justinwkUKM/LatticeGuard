@@ -33,11 +33,12 @@ class InventoryItem(BaseModel):
     path: str
     line: int
     name: str  # e.g. "RSASigner" or "tls_config"
-    category: Literal["symmetric", "hashing", "key_exchange", "signing", "pki", "protocol", "dependency", "secret_leak"]
+    category: str # flexible string to accommodate AI outputs like "secret_management", "cryptographic_library", etc.
     algorithm: Optional[str] = None # e.g. "RSA-2048", "AES-256-GCM"
     key_size: Optional[int] = None
     is_pqc_vulnerable: bool
     description: str
+    remediation: Optional[str] = None
 
 class UsageLocation(BaseModel):
     path: str

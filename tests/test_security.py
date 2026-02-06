@@ -45,17 +45,18 @@ def test_scanner_ignores_git(tmp_path):
     (tmp_path / ".hidden" / "data").write_text("secret")
     
     (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "main.py").write_text("print('hello')")
+    # Use a .pem file which IS in SUSPICIOUS_EXTENSIONS
+    (tmp_path / "src" / "test.pem").write_text("-----BEGIN CERTIFICATE-----")
     
     scanner = ArtifactScanner(str(tmp_path))
-    files = list(scanner.scan())
+    suspects = list(scanner.scan())
     
-    # Should NOT contain .git/config
-    assert not any(".git" in f for f in files)
-    # Should NOT contain .hidden/data (since I added ignore for .*)
-    assert not any(".hidden" in f for f in files)
-    # Should contain src/main.py
-    assert any("src/main.py" in f for f in files)
+    # Should NOT contain .git/config (scanner returns Suspect objects)
+    assert not any(".git" in s.path for s in suspects)
+    # Should NOT contain .hidden/data (since scanner ignores .* dirs)
+    assert not any(".hidden" in s.path for s in suspects)
+    # Should contain src/test.pem (it has a suspicious extension)
+    assert any("src/test.pem" in s.path for s in suspects)
 
 def test_scanner_no_symlink_traversal(tmp_path):
     # Create a target outside repo

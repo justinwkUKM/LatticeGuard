@@ -2,11 +2,13 @@ import sqlite3
 import json
 from typing import List, Dict
 from pathlib import Path
-from schemas.models import RiskAssessment
+from schemas.models import RiskAssessment, InventoryItem
+from agents.remediation import RemediationAgent
 
 class RiskAssessor:
     def __init__(self, db_path: str):
         self.db_path = db_path
+        self.remediator = RemediationAgent()
 
     def assess_risk(self, run_id: str, output_dir: Path):
         conn = sqlite3.connect(self.db_path)
@@ -17,7 +19,7 @@ class RiskAssessor:
         c.execute("SELECT count(*) as count FROM suspects WHERE run_id = ?", (run_id,))
         fast_scan_count = c.fetchone()['count']
         
-        c.execute("SELECT * FROM suspects WHERE run_id = ? LIMIT 50", (run_id,)) # Limit for readability in report
+        c.execute("SELECT * FROM suspects WHERE run_id = ? LIMIT 50", (run_id,))
         suspects_top = c.fetchall()
         
         # 2. Fetch AI Verified Findings (Inventory)
@@ -27,16 +29,32 @@ class RiskAssessor:
         
         # Process Inventory
         risks = []
-        high_risk_count = 0
+        high_risk_findings = []
+        
         for row in rows:
             level = "low"
             if row['is_pqc_vulnerable']:
                 level = "high"
-                high_risk_count += 1
             elif row['category'] == 'safe' or row['algorithm'] == 'None':
                 level = "safe"
             elif row['category'] in ['hashing', 'symmetric']:
                 level = "low"
+            
+            item = InventoryItem(
+                id=row['id'],
+                path=row['path'],
+                line=row['line'],
+                name=row['name'],
+                category=row['category'],
+                algorithm=row['algorithm'],
+                key_size=row['key_size'],
+                is_pqc_vulnerable=row['is_pqc_vulnerable'],
+                description=row['description'],
+                remediation=None 
+            )
+            
+            if level == "high":
+                high_risk_findings.append(item)
             
             risk = {
                 "id": row['id'],
@@ -44,15 +62,19 @@ class RiskAssessor:
                 "line": row['line'],
                 "algo": row['algorithm'],
                 "level": level,
-                "desc": row['description']
+                "desc": row['description'],
+                "item": item
             }
             risks.append(risk)
 
+        # 3. Generate Remediation Suggestions
+        remediations = self.remediator.process_findings(high_risk_findings)
+
         # Generate Reports
-        self._generate_markdown(risks, suspects_top, fast_scan_count, output_dir / "pqc_risk_report.md", run_id)
+        self._generate_markdown(risks, suspects_top, fast_scan_count, remediations, output_dir / "pqc_risk_report.md", run_id)
         self._generate_sarif(risks, output_dir / "pqc_scan.sarif", run_id)
     
-    def _generate_markdown(self, risks: List[Dict], suspects: List[sqlite3.Row], suspect_total: int, path: Path, run_id: str):
+    def _generate_markdown(self, risks: List[Dict], suspects: List[sqlite3.Row], suspect_total: int, remediations: List[dict], path: Path, run_id: str):
         content = f"# PQC Risk Assessment Report\n\n**Run ID:** {run_id}\n\n"
         
         high_risks = [r for r in risks if r['level'] in ['high', 'critical']]
@@ -79,7 +101,7 @@ class RiskAssessor:
         content += f"- **Total Cost:** ${total_cost:.4f}\n"
         content += f"- **Tokens:** {in_tok:,} In / {out_tok:,} Out\n\n"
 
-        # --- 3. AI Scan Results (Inventory) ---
+        # --- 3. AI Verified Risks (Inventory) ---
         content += "## 2. AI Verified Risks (Inventory)\n"
         if not high_risks:
             content += "No cryptographic assets confirmed by AI analysis.\n\n"
@@ -89,8 +111,19 @@ class RiskAssessor:
                  content += f"  - Context: {r['desc']}\n"
             content += "\n"
 
-        # --- 4. AI Dismissed / Verified Safe ---
-        content += "## 3. AI Verified Safe / Dismissed\n"
+        # --- 4. Remediation & Migration Plans ---
+        content += "## 3. Remediation Recommendations\n"
+        content += "*AI-generated migration paths for detected PQC vulnerabilities.*\n\n"
+        if not remediations:
+            content += "No high-risk vulnerabilities requiring immediate remediation were identified.\n\n"
+        else:
+            for rem in remediations:
+                content += f"### Mitigation: {rem['item']} (`{rem['path']}`)\n"
+                content += f"{rem['remediation']}\n\n"
+            content += "---\n\n"
+
+        # --- 5. AI Verified Safe / Dismissed ---
+        content += "## 4. AI Verified Safe / Dismissed\n"
         content += "*Files that were flagged by scanners but cleared by AI analysis.*\n\n"
         if not safe_findings:
             content += "No files were explicitly dismissed as safe (or no suspects were found).\n\n"
@@ -100,8 +133,8 @@ class RiskAssessor:
                 content += f"  - File: `{r['path']}`\n"
             content += "\n"
 
-        # --- 5. Fast Scan Results (Raw) ---
-        content += f"## 4. Fast Scan Findings (Raw Suspects: Top {len(suspects)})\n"
+        # --- 6. Fast Scan Findings (Raw) ---
+        content += f"## 5. Fast Scan Findings (Raw Suspects: Top {len(suspects)})\n"
         content += "*Files flagged by pattern/extension matching before AI analysis.*\n\n"
         
         if not suspects:

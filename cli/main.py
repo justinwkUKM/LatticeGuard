@@ -17,6 +17,8 @@ from scanner.patterns import PatternScanner
 from scanner.dependencies import DependencyScanner
 from scanner.files import ArtifactScanner
 from scanner.ast_scanner import ASTScanner
+from scanner.js_scanner import JSScanner
+from scanner.go_ast_scanner import GoScanner
 from scanner.secret_scanner import SecretScanner
 from scanner.doc_scanner import DocScanner
 from scanner.terraform_json_scanner import TerraformJSONScanner
@@ -114,6 +116,8 @@ def scan(
         # For Phase 1, I will update the orchestrator loop to walk once and call all scanners.
         
         ast_s = ASTScanner()
+        js_s = JSScanner()
+        go_s = GoScanner()
         sec_s = SecretScanner()
         doc_s = DocScanner(db_path)
         tf_s = TerraformJSONScanner(repo_path)
@@ -131,7 +135,15 @@ def scan(
                 # AST Scan (Python only)
                 if f.endswith(".py"):
                     suspects.extend(ast_s.scan_file(file_path))
-                    
+                
+                # JS/TS Scan
+                if f.endswith((".js", ".ts")):
+                    suspects.extend(js_s.scan_file(file_path))
+                
+                # Go Scan
+                if f.endswith(".go"):
+                    suspects.extend(go_s.scan_file(file_path))
+                        
                 # Secret Scan
                 suspects.extend(sec_s.scan_file(file_path))
 
