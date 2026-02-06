@@ -33,6 +33,8 @@ class RiskAssessor:
             if row['is_pqc_vulnerable']:
                 level = "high"
                 high_risk_count += 1
+            elif row['category'] == 'safe' or row['algorithm'] == 'None':
+                level = "safe"
             elif row['category'] in ['hashing', 'symmetric']:
                 level = "low"
             
@@ -54,10 +56,12 @@ class RiskAssessor:
         content = f"# PQC Risk Assessment Report\n\n**Run ID:** {run_id}\n\n"
         
         high_risks = [r for r in risks if r['level'] in ['high', 'critical']]
+        safe_findings = [r for r in risks if r['level'] == 'safe']
         
         # --- 1. Executive Summary ---
         content += "## 1. Executive Summary\n"
         content += f"- **Quantum-Vulnerable Assets (AI Verified):** {len(high_risks)}\n"
+        content += f"- **Verified Safe / Non-Critical:** {len(safe_findings)}\n"
         content += f"- **Total Suspicious Files (Fast Scan):** {suspect_total}\n\n"
         
         # --- 2. Cost Analysis ---
@@ -77,17 +81,27 @@ class RiskAssessor:
 
         # --- 3. AI Scan Results (Inventory) ---
         content += "## 2. AI Verified Risks (Inventory)\n"
-        if not risks:
+        if not high_risks:
             content += "No cryptographic assets confirmed by AI analysis.\n\n"
         else:
-            for r in risks:
-                 icon = "🔴" if r['level'] == "high" else "🟢"
-                 content += f"- {icon} **{r['algo']}** in `{r['path']}:{r['line']}`\n"
+            for r in high_risks:
+                 content += f"- 🔴 **{r['algo']}** in `{r['path']}:{r['line']}`\n"
                  content += f"  - Context: {r['desc']}\n"
             content += "\n"
 
-        # --- 4. Fast Scan Results (Raw) ---
-        content += f"## 3. Fast Scan Findings (Raw Suspects: Top {len(suspects)})\n"
+        # --- 4. AI Dismissed / Verified Safe ---
+        content += "## 3. AI Verified Safe / Dismissed\n"
+        content += "*Files that were flagged by scanners but cleared by AI analysis.*\n\n"
+        if not safe_findings:
+            content += "No files were explicitly dismissed as safe (or no suspects were found).\n\n"
+        else:
+            for r in safe_findings:
+                content += f"- 🟢 **{r['desc']}**\n"
+                content += f"  - File: `{r['path']}`\n"
+            content += "\n"
+
+        # --- 5. Fast Scan Results (Raw) ---
+        content += f"## 4. Fast Scan Findings (Raw Suspects: Top {len(suspects)})\n"
         content += "*Files flagged by pattern/extension matching before AI analysis.*\n\n"
         
         if not suspects:

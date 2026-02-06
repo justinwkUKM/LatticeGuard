@@ -190,6 +190,19 @@ class FileAnalystAgent:
                 "reasoning": "Found standard PEM header"
             }}
         ]
+
+        CRITICAL: If NO cryptographic vulnerabilities are found (e.g. standard infrastructure config, random tokens, or safe algorithms), you MUST return a single "Safe" record:
+        [
+            {{
+                "name": "Safe File",
+                "category": "safe",
+                "algorithm": "None",
+                "key_size": 0,
+                "is_pqc_vulnerable": false,
+                "line": 0,
+                "reasoning": "Explanation of why this file is safe (e.g. 'AWS Config only', 'Random hex string')"
+            }}
+        ]
         """
         try:
             res_json, usage = self.ai.generate_json(prompt, self.pro_model_name)
