@@ -14,14 +14,16 @@ Lattices are the mathematical foundation behind the most resilient Post-Quantum 
 ## Key Features
 -   **Enterprise Scale**: Uses an event-driven architecture (Redis Queue) to process massive repositories asynchronously.
 -   **Expanded Discovery**:
-    -   **Code**: Python, JS, Java, Rust, Go.
+    -   **Code**: Python (AST-based), JS, Java (Maven), Rust (Cargo), Go (go.mod).
+    -   **Secrets**: Entropy-based detection for AWS, GCP, and Stripe keys.
     -   **Infra**: Docker, Kubernetes, Terraform.
     -   **Data**: SQL Dumps, Config Files.
     -   **Network**: Live TLS/SSL Handshake Analysis.
     -   **SCA**: Dependency Scanning for known weak libraries (`pycrypto`, `bouncycastle`).
     -   **History**: "Ghost" Scanning to find deleted secrets in `git log`.
+-   **Transparency & Costing**: AI analysis now includes detailed reasoning for "Verified Safe" findings and automated token/cost tracking per scan.
 -   **IaC Ready**: Native support for scanning Terraform (`.tf`) files for weak TLS policies and cryptographic resource definitions.
--   **Risk Assessment**: Classifies findings based on the NIST PQC Migration Guidelines.
+-   **Risk Assessment**: Classifies findings based on the NIST PQC Migration Guidelines (including a new "Verify Safe" tier).
 -   **Docker Native**: Fully containerized for easy local deployment or cloud scaling.
 
 ## Architecture
@@ -44,24 +46,30 @@ graph TD
 
 ## Discovery Process
 
-The discovery engine operates in two stages to maximize speed and accuracy:
+The discovery engine operates in three tiered stages to maximize speed and accuracy:
 
-1.  **Heuristic Scan (Fast)**:
-    -   Scans file system for known cryptographic extensions (`.pem`, `.crt`, `.jks`).
-    -   Uses Regex patterns to find standard library usage (e.g., `import hashlib`, `MessageDigest.getInstance`).
-2.  **AI Audit (Deep)**:
-    -   For complex code blocks or custom implementations, the file content is sent to **Gemini 3 Pro**.
-    -   The AI determines if the code implements a Quantum-Vulnerable algorithm (e.g., RSA, ECC) or a Quantum-Safe one (e.g., Kyber, Dilithium).
+1.  **Fast Discovery (Heuristic & Deterministic)**:
+    -   **Pattern Scanning**: Regex patterns for known cryptographic extensions and standard library signatures.
+    -   **AST-Based Scanning (Python)**: Uses Abstract Syntax Trees to identify exact cryptographic calls (e.g., `generate_private_key`) with high precision.
+    -   **Secret Detection**: Entropy analysis and specific provider patterns to find hardcoded keys.
+    -   **Dependency Scanning**: Parses manifests (`pom.xml`, `go.mod`, `Cargo.toml`) for PQC-vulnerable libraries.
+2.  **AI Triage (Flash)**:
+    -   Fast screening of flagged files to dismiss non-cryptographic noise.
+3.  **AI Deep Audit (Pro)**:
+    -   Comprehensive analysis of complex code or custom logic by **Gemini 3 Pro**.
+    -   Identifies Shor's Algorithm vulnerabilities (RSA, ECC) vs PQC-Safe algorithms (Kyber, Dilithium).
+    -   **Transparency**: Explains why files are marked as "Safe" (e.g., "Standard infrastructure config").
 
 ## Risk Assessment Logic
 
-Findings are categorized into risk levels based on their resistance to Quantum Attacks:
+Findings are categorized into risk levels based on NIST PQC Migration Guidelines:
 
 | Risk Level | Description | Examples |
 | :--- | :--- | :--- |
-| **CRITICAL** | Asymmetric Encryption/Signing (Shor's Algo Target) | RSA-2048, ECDSA, Diffie-Hellman |
+| **CRITICAL** | Asymmetric Encryption/Signing (Shor's Target) | RSA-2048, ECDSA, Diffie-Hellman |
 | **HIGH** | Legacy Hashing or Weak Symmetric | SHA-1, MD5, DES |
 | **LOW** | Quantum Safe or Robust Symmetric | AES-256, SHA-3, Kyber-768 |
+| **SAFE** | AI-Verified Non-Cryptographic Asset | Cleared infrastructure configs |
 | **INFO** | Configuration or Non-Critical | TLS Versions, Random Number Generators |
 
 ## Detailed Uses & Real-World Scenarios
