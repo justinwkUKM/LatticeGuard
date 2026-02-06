@@ -98,9 +98,15 @@ class AIClient:
             content = response.choices[0].message.content
             
             if json_mode:
-                # Some models might wrap JSON in markdown blocks even with json_object mode
-                if content.startswith("```json"):
-                    content = content.strip("`").replace("json\n", "", 1)
+                # Robustly extract JSON from markdown blocks
+                import re
+                match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL | re.IGNORECASE)
+                if match:
+                    content = match.group(1)
+                elif content.strip().startswith("```"):
+                     # Fallback for unclosed blocks or other weirdness
+                     content = content.strip("`").replace("json", "", 1).strip()
+                
                 return json.loads(content)
             
             return content
