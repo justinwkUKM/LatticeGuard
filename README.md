@@ -1,5 +1,7 @@
 # LatticeGuard - Post-Quantum Cryptography (PQC) Assessment Tool
 
+A specialized tool designed to scan enterprise repositories for cryptographic assets, assess their vulnerability to Quantum Computers (Shor's Algorithm), and generate compliance reports (SARIF/Markdown).
+
 > **Built by PayNet R&D**
 >
 > ⚠️ **Disclaimer**: This tool is under active development. Please use with care.
@@ -8,7 +10,6 @@
 The name implies **Guarding** your infrastructure using **Lattice-based Cryptography**.
 Lattices are the mathematical foundation behind the most resilient Post-Quantum algorithms (like **Kyber** and **Dilithium**). While traditional RSA and Elliptic Curve systems fall to Quantum Computers (Shor's Algorithm), Lattice-based problems (like *Learning With Errors*) remain secure. This tool helps you bridge that gap.
 
-A specialized tool designed to scan enterprise repositories for cryptographic assets, assess their vulnerability to Quantum Computers (Shor's Algorithm), and generate compliance reports (SARIF/Markdown).
 
 ## Key Features
 -   **Enterprise Scale**: Uses an event-driven architecture (Redis Queue) to process massive repositories asynchronously.
