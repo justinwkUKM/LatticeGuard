@@ -49,6 +49,10 @@ SUSPICIOUS_EXTENSIONS = {
     ".env": "Environment Config",
     ".json": "JSON Config/Data",
     ".xml": "XML Data",
+    ".pdf": "Architectural Documentation (PDF)",
+    ".png": "Architectural Diagram (PNG)",
+    ".jpg": "Architectural Diagram (JPG)",
+    ".jpeg": "Architectural Diagram (JPEG)",
 }
 
 class ArtifactScanner:

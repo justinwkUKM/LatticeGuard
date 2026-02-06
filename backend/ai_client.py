@@ -120,3 +120,41 @@ class AIClient:
         except Exception as e:
             logger.error(f"LiteLLM Error: {e}")
             raise
+    def generate_multimodal(self, prompt: str, data: bytes, mime_type: str, model_name: Optional[str] = None) -> tuple[Any, Dict[str, int]]:
+        """
+        Generates content from multimodal input (text + data).
+        Returns: (json_content, usage_dict)
+        """
+        target_model = model_name or self.default_flash_model
+        
+        if self.provider == "google":
+            import google.generativeai as genai
+            try:
+                model = genai.GenerativeModel(target_model)
+                # For Gemini, multimodal input is a list of parts
+                content = [
+                    prompt,
+                    {
+                        "mime_type": mime_type,
+                        "data": data
+                    }
+                ]
+                
+                # We expect JSON output for document analysis usually
+                config = {"response_mime_type": "application/json"}
+                response = model.generate_content(content, generation_config=config)
+                
+                usage = {
+                    "input_tokens": response.usage_metadata.prompt_token_count,
+                    "output_tokens": response.usage_metadata.candidates_token_count
+                }
+                
+                return json.loads(response.text), usage
+            except Exception as e:
+                logger.error(f"Multimodal Gemini Error: {e}")
+                raise
+        else:
+            # LiteLLM multimodal support varies by provider, falling back to text prompt if unsupported
+            # but for this specific request, we focus on Gemini.
+            logger.warning("Multimodal support is currently only optimized for Google provider.")
+            return self.generate_json(f"{prompt}\n\n[Warning: Multimodal data omitted for this provider]", target_model)

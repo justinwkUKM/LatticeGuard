@@ -18,6 +18,8 @@ from scanner.dependencies import DependencyScanner
 from scanner.files import ArtifactScanner
 from scanner.ast_scanner import ASTScanner
 from scanner.secret_scanner import SecretScanner
+from scanner.doc_scanner import DocScanner
+from scanner.terraform_json_scanner import TerraformJSONScanner
 from agents.file_analyst import FileAnalystAgent
 from agents.graph import GraphAgent
 from risk.assessor import RiskAssessor
@@ -40,6 +42,7 @@ def scan(
     max_depth: int = 5,
     skip_fast: bool = False,
     skip_deep: bool = False,
+    skip_multimodal: bool = False,
 ):
     """
     Runs a Post-Quantum Cryptography (PQC) assessment on the target repository.
@@ -110,6 +113,8 @@ def scan(
         
         ast_s = ASTScanner()
         sec_s = SecretScanner()
+        doc_s = DocScanner(db_path)
+        tf_s = TerraformJSONScanner(repo_path)
         
         for dirpath, dirnames, filenames in os.walk(repo_path):
             # Filter in-place
@@ -127,6 +132,16 @@ def scan(
                     
                 # Secret Scan
                 suspects.extend(sec_s.scan_file(file_path))
+
+                # Doc/Arch Scan
+                if f.lower().endswith((".pdf", ".png", ".jpg", ".jpeg", ".md")):
+                    if skip_multimodal and f.lower().endswith((".pdf", ".png", ".jpg", ".jpeg")):
+                        continue
+                    suspects.extend(doc_s.scan_file(file_path, run_id))
+
+                # Terraform JSON Plan Scan
+                if f.lower().endswith(".json"):
+                    suspects.extend(tf_s.scan_file(file_path))
 
         # Dependencies
         console.print("  Running Dependency Scanner...")

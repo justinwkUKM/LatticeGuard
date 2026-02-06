@@ -11,6 +11,7 @@ class FileAnalystAgent:
         self.flash_model_name = os.getenv("GEMINI_FLASH_MODEL", "gemini-3-flash-preview")
         self.pro_model_name = os.getenv("GEMINI_PRO_MODEL", "gemini-3-pro-preview")
         self.ai = AIClient()
+        self.arch_context = ""
 
     def analyze_suspects(self, run_id: str):
         """
@@ -22,11 +23,19 @@ class FileAnalystAgent:
         # Get all suspects for this run
         c.execute("SELECT path, line, content_snippet, type, pattern_matched, confidence FROM suspects WHERE run_id = ?", (run_id,))
         rows = c.fetchall()
+        
+        # Resume support: Get already processed files
+        c.execute("SELECT DISTINCT path FROM inventory WHERE run_id = ?", (run_id,))
+        processed_files = {r[0] for r in c.fetchall()}
+        
         conn.close()
 
         if not rows:
             print("No suspects found to analyze.")
             return
+
+        # Fetch Architectural Context first
+        self._load_arch_context(run_id)
 
         # Group by file path to avoid re-reading file multiple times
         # Row: 0=path, 1=line, 2=snippet, 3=type, 4=pattern, 5=confidence
@@ -35,6 +44,9 @@ class FileAnalystAgent:
         
         for r in rows:
             path = r[0]
+            if path in processed_files:
+                continue
+                
             if path not in suspects_by_file:
                 suspects_by_file[path] = []
             
@@ -49,13 +61,31 @@ class FileAnalystAgent:
             )
             suspects_by_file[path].append(s)
 
-        print(f"Analyzing {len(suspects_by_file)} files containing suspects...")
+        if not suspects_by_file and rows:
+            print("All previously detected suspects have already been analyzed. Resuming completed.")
+            return
+
+        print(f"Analyzing {len(suspects_by_file)} files containing suspects (Skipped {len(processed_files)} previously analyzed)...")
         
-        for file_path, suspects in suspects_by_file.items():
+        total_to_analyze = len(suspects_by_file)
+        for i, (file_path, suspects) in enumerate(suspects_by_file.items(), 1):
             try:
+                print(f"[{i}/{total_to_analyze}] Analyzing {file_path}...")
                 self.analyze_file_tiered(file_path, suspects, run_id)
             except Exception as e:
                 print(f"Error analyzing {file_path}: {e}")
+
+    def _load_arch_context(self, run_id: str):
+        """Loads architectural summaries from documentation."""
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute("SELECT content_snippet FROM suspects WHERE run_id = ? AND (pattern_matched = 'Architectural_Doc' OR pattern_matched = 'Architectural_MD')", (run_id,))
+        rows = c.fetchall()
+        conn.close()
+        
+        if rows:
+            self.arch_context = "\n---\nARCHITECTURAL CONTEXT:\n" + "\n".join([r[0] for r in rows]) + "\n---\n"
+            print(f"🧠 Loaded {len(rows)} architectural context(s).")
 
     def analyze_file_tiered(self, file_path: str, suspects: List[object], run_id: str):
         """
@@ -71,11 +101,22 @@ class FileAnalystAgent:
         # For cost saving, let's just use the snippets combined.
         snippets = "\n".join([f"Line {s.line}: {s.content_snippet}" for s in suspects])
         context = f"File: {file_path}\nTarget Pattern Matches:\n{snippets}"
+        
+        if self.arch_context:
+            context = f"{self.arch_context}\nTARGET FILE CONTEXT:\n{context}"
 
         # --- TIER 1: FLASH ---
         is_relevant = self._ask_flash_triage(context, run_id)
         if not is_relevant:
             print(f"⚡️ [Flash] Dismissed {file_path} as non-crypto/irrelevant.")
+            # Record as Safe for resume support
+            self._save_results(file_path, run_id, [{
+                "name": "Audit Dismissed",
+                "category": "safe",
+                "algorithm": "None",
+                "line": 0,
+                "reasoning": "Dismissed by Flash triage as non-cryptographic."
+            }])
             return
 
         print(f"🧠 [Flash] Flagged {file_path}. Escalating to Pro...")
@@ -163,7 +204,7 @@ class FileAnalystAgent:
         """Returns detailed inventory items."""
         prompt = f"""
         You are a Senior Cryptography Auditor.
-        Analyze the following technical artifacts.
+        Analyze the following technical artifacts in the context of the provided architectural requirements (if any).
         
         {context}
         
@@ -177,6 +218,7 @@ class FileAnalystAgent:
              * VULNERABLE: AES-128, SHA-256 (Weak collision resistance), DES/3DES.
              * SAFE: AES-256, SHA-384, SHA-512, ChaCha20-Poly1305.
         3. Extract Key Size if visible.
+        4. Cross-Reference: Does this finding align with or violate the Architectural Context provided above?
         
         Output JSON List:
         [
