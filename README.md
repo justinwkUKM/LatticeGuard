@@ -1,5 +1,7 @@
 # LatticeGuard - Post-Quantum Cryptography (PQC) Assessment Tool
 
+> **Built by PayNet R&D**
+
 A specialized tool designed to scan enterprise repositories for cryptographic assets, assess their vulnerability to Quantum Computers (Shor's Algorithm), and generate compliance reports (SARIF/Markdown).
 
 ## Key Features
@@ -55,7 +57,7 @@ Findings are categorized into risk levels based on their resistance to Quantum A
 | **LOW** | Quantum Safe or Robust Symmetric | AES-256, SHA-3, Kyber-768 |
 | **INFO** | Configuration or Non-Critical | TLS Versions, Random Number Generators |
 
-## Real-World Use Cases
+## Detailed Uses & Real-World Scenarios
 
 ### 1. Enterprise Audit & Migration Planning
 **Scenario**: A financial institution needs to migrate 5,000 microservices to Quantum-Safe algorithms by 2028.
@@ -71,6 +73,36 @@ Findings are categorized into risk levels based on their resistance to Quantum A
 **Scenario**: Preventing new weak crypto from entering the codebase.
 -   **Solution**: Integrate the scanner into GitHub Actions / Jenkins.
 -   **Outcome**: The build fails if `scanner/patterns.py` detects usage of `MD5` or `DES` in the diff, providing immediate feedback to the developer.
+
+## Test Scenarios (PQC Focused)
+
+The system is rigorously tested against critical Post-Quantum Cryptography risk scenarios:
+
+### 1. Shor's Algorithm Vulnerability Detection (Asymmetric Crypto)
+-   **Goal**: Identify Key Exchange and Digital Signature algorithms that are vulnerable to Shor's Algorithm.
+-   **Scenario**: Code implements `RSA-2048` for encryption or `ECDSA (P-256)` for signatures.
+-   **Validation**:
+    -   Scanner flags `RSA` / `Diffie-Hellman` / `ECC` as **CRITICAL**.
+    -   AI suggests migration to Kyber (Key Enc) or Dilithium (Signatures).
+
+### 2. Hybrid Cryptography Verification
+-   **Goal**: Validate the presence of defense-in-depth "Hybrid" schemes during the migration window.
+-   **Scenario**: A TLS configuration negotiates `ECDHE_RSA_WITH_AES_128_GCM_SHA256` (Classic) vs `X25519Kyber768Draft00` (Hybrid).
+-   **Validation**:
+    -   Classic TLS is flagged as **HIGH** risk (Harvest Now, Decrypt Later).
+    -   Hybrid / PQC-only TLS is marked as **COMPLIANT** (Low Risk).
+
+### 3. Weak Symmetric Key Sizes (Grover's Algorithm)
+-   **Goal**: Detect symmetric keys that are insufficient against Grover's Search (which halves effective key space).
+-   **Scenario**: Application uses `AES-128`.
+-   **Validation**:
+    -   Flagged as **MEDIUM/HIGH** risk.
+    -   Recommendation provided to upgrade to `AES-256` or `ChaCha20-Poly1305` where 256-bit keys are standard.
+
+### 4. Vulnerability Detection in Dependencies
+-   **Goal**: Ensure SCA (Software Composition Analysis) catches outdated crypto libraries.
+-   **Scenario**: A `requirements.txt` includes `pycrypto` (unsafe).
+-   **Validation**: The scanner flags the library itself as a risk vector.
 
 ## Usage Guidelines
 
@@ -118,6 +150,38 @@ For local testing without the full API stack:
 ```bash
 python3 cli/main.py scan ./local-folder
 ```
+
+## Configuration
+
+### AI Provider Setup
+
+LatticeGuard defaults to the **Google Native** provider (`google-generativeai`). To use **LiteLLM** (supporting OpenAI, Anthropic, Azure, etc.), set the following environment variables:
+
+1.  **Enable LiteLLM**:
+    ```bash
+    export AI_PROVIDER="litellm"
+    ```
+
+2.  **Configure Model & Keys**:
+    Set the standard keys for your model provider (automatically detected by LiteLLM).
+
+    **Example: OpenAI (GPT-4)**
+    ```bash
+    export OPENAI_API_KEY="sk-..."
+    export LITELLM_MODEL="gpt-4"
+    ```
+
+    **Example: Anthropic (Claude 3)**
+    ```bash
+    export ANTHROPIC_API_KEY="sk-ant-..."
+    export LITELLM_MODEL="claude-3-opus-20240229"
+    ```
+
+    **Example: Google via LiteLLM**
+    ```bash
+    export GEMINI_API_KEY="AIza..."
+    export LITELLM_MODEL="gemini/gemini-1.5-pro"
+    ```
 
 ## Getting Started
 
