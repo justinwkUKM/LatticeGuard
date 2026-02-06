@@ -58,7 +58,11 @@ class PlannerAgent:
 
         # 3. Call AI
         try:
-            plan_json = self.ai.generate_json(prompt, self.model_name)
+            plan_json, usage = self.ai.generate_json(prompt, self.model_name)
+            
+            # Optional: Save planner metrics if needed
+            # from scanner.db import save_scan_metric
+            # save_scan_metric("data/pqc.db", run_id, self.model_name, usage["input_tokens"], usage["output_tokens"], 0.0)
             
             # 4. Validate & Return
             plan = ScanPlan(**plan_json)

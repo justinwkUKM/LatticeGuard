@@ -38,22 +38,16 @@ class AIClient:
             logger.warning(f"Unknown AI_PROVIDER: {self.provider}. Defaulting to Google.")
             self.provider = "google"
 
-    def generate_json(self, prompt: str, model_name: Optional[str] = None) -> Any:
+    def generate_json(self, prompt: str, model_name: Optional[str] = None) -> tuple[Any, Dict[str, int]]:
         """
         Generates content and parses as JSON.
-        Handles provider-specific implementation details.
+        Returns: (json_content, usage_dict)
+        usage_dict keys: input_tokens, output_tokens
         """
         target_model = model_name or self.default_flash_model
         
         # If using LiteLLM, check if a specific LiteLLM model map is provided
         if self.provider == "litellm":
-            # For LiteLLM, user might want to map "flash" to "gpt-4o-mini"
-            # We check LITELLM_MODEL env var first if model_name wasn't explicitly passed
-            # But if model_name IS passed (e.g. from the agent), we might need to map it.
-            # Simplified approach: If it maps to a known Gemini model, prefix it.
-            # Otherwise assume the user knows what they are doing or set LITELLM_MODEL.
-            
-            # Allow override via env for "generic" requests
             env_model = os.getenv("LITELLM_MODEL")
             if env_model and not model_name:
                 target_model = env_model
@@ -63,7 +57,7 @@ class AIClient:
         else:
             return self._generate_google(prompt, target_model, json_mode=True)
 
-    def _generate_google(self, prompt: str, model_name: str, json_mode: bool = False) -> Any:
+    def _generate_google(self, prompt: str, model_name: str, json_mode: bool = False) -> tuple[Any, Dict[str, int]]:
         import google.generativeai as genai
         
         try:
@@ -72,15 +66,21 @@ class AIClient:
             
             response = model.generate_content(prompt, generation_config=config)
             
+            # Extract usage
+            usage = {
+                "input_tokens": response.usage_metadata.prompt_token_count,
+                "output_tokens": response.usage_metadata.candidates_token_count
+            }
+            
             if json_mode:
-                return json.loads(response.text)
-            return response.text
+                return json.loads(response.text), usage
+            return response.text, usage
             
         except Exception as e:
             logger.error(f"Google Native Generative AI Error: {e}")
             raise
 
-    def _generate_litellm(self, prompt: str, model_name: str, json_mode: bool = False) -> Any:
+    def _generate_litellm(self, prompt: str, model_name: str, json_mode: bool = False) -> tuple[Any, Dict[str, int]]:
         from litellm import completion
         
         messages = [{"role": "user", "content": prompt}]
@@ -97,6 +97,12 @@ class AIClient:
             )
             content = response.choices[0].message.content
             
+            # Extract usage
+            usage = {
+                "input_tokens": response.usage.prompt_tokens,
+                "output_tokens": response.usage.completion_tokens
+            }
+            
             if json_mode:
                 # Robustly extract JSON from markdown blocks
                 import re
@@ -107,9 +113,9 @@ class AIClient:
                      # Fallback for unclosed blocks or other weirdness
                      content = content.strip("`").replace("json", "", 1).strip()
                 
-                return json.loads(content)
+                return json.loads(content), usage
             
-            return content
+            return content, usage
             
         except Exception as e:
             logger.error(f"LiteLLM Error: {e}")

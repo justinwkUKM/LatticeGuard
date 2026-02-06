@@ -12,6 +12,51 @@ class FileAnalystAgent:
         self.pro_model_name = os.getenv("GEMINI_PRO_MODEL", "gemini-3-pro-preview")
         self.ai = AIClient()
 
+    def analyze_suspects(self, run_id: str):
+        """
+        Fetches suspects from the DB and runs tiered analysis on them.
+        """
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        
+        # Get all suspects for this run
+        c.execute("SELECT path, line, content_snippet, type, pattern_matched, confidence FROM suspects WHERE run_id = ?", (run_id,))
+        rows = c.fetchall()
+        conn.close()
+
+        if not rows:
+            print("No suspects found to analyze.")
+            return
+
+        # Group by file path to avoid re-reading file multiple times
+        # Row: 0=path, 1=line, 2=snippet, 3=type, 4=pattern, 5=confidence
+        suspects_by_file = {}
+        from schemas.models import Suspect # Import locally to avoid circular dep if any
+        
+        for r in rows:
+            path = r[0]
+            if path not in suspects_by_file:
+                suspects_by_file[path] = []
+            
+            # Reconstruct Suspect object (simplified)
+            s = Suspect(
+                path=path,
+                line=r[1],
+                content_snippet=r[2],
+                type=r[3],
+                pattern_matched=r[4],
+                confidence=r[5]
+            )
+            suspects_by_file[path].append(s)
+
+        print(f"Analyzing {len(suspects_by_file)} files containing suspects...")
+        
+        for file_path, suspects in suspects_by_file.items():
+            try:
+                self.analyze_file_tiered(file_path, suspects, run_id)
+            except Exception as e:
+                print(f"Error analyzing {file_path}: {e}")
+
     def analyze_file_tiered(self, file_path: str, suspects: List[object], run_id: str):
         """
         Tiered Analysis:
@@ -28,7 +73,7 @@ class FileAnalystAgent:
         context = f"File: {file_path}\nTarget Pattern Matches:\n{snippets}"
 
         # --- TIER 1: FLASH ---
-        is_relevant = self._ask_flash_triage(context)
+        is_relevant = self._ask_flash_triage(context, run_id)
         if not is_relevant:
             print(f"⚡️ [Flash] Dismissed {file_path} as non-crypto/irrelevant.")
             return
@@ -38,7 +83,7 @@ class FileAnalystAgent:
         # --- TIER 2: PRO ---
         # We might want to read the FULL file content here for the Pro model to have full context.
         # But for large files, that's risky. Let's stick to snippets + some window for now.
-        full_analysis = self._ask_pro_deep_dive(context)
+        full_analysis = self._ask_pro_deep_dive(context, run_id)
         
         if full_analysis:
              self._save_results(file_path, run_id, full_analysis)
@@ -66,7 +111,55 @@ class FileAnalystAgent:
             print(f"Tier 1 Error: {e}")
             return True # Fail open (escalate to Pro if Flash fails)
 
-    def _ask_pro_deep_dive(self, context: str) -> List[InventoryItem]:
+    def _calculate_cost(self, model_name: str, input_tokens: int, output_tokens: int) -> float:
+        # Approximate Public Pricing (per 1M tokens) - Update as needed
+        rates = {
+            "gemini-2.0-flash": {"in": 0.10, "out": 0.40},
+            "gemini-1.5-flash": {"in": 0.075, "out": 0.30},
+            "gemini-2.0-pro":   {"in": 3.50, "out": 10.50}, # Placeholder
+            "gemini-3-pro":     {"in": 3.50, "out": 10.50}, # Placeholder
+        }
+        
+        # Default to Flash rates if unknown
+        rate = rates.get("gemini-1.5-flash")
+        for k, v in rates.items():
+            if k in model_name:
+                rate = v
+                break
+        
+        cost = (input_tokens / 1_000_000 * rate["in"]) + (output_tokens / 1_000_000 * rate["out"])
+        return cost
+
+    def _ask_flash_triage(self, context: str, run_id: str) -> bool:
+        """Returns True if the content looks like relevant cryptography."""
+        prompt = f"""
+        You are a fast security filter.
+        Analyze these code snippets. Do they contain ACTUAL cryptographic operations, key material, or security configurations?
+        
+        Ignore:
+        - Comments, Tests, Documentation
+        - Generic variable names like 'key' or 'random' without context
+        - HTML/CSS
+        
+        Context:
+        {context}
+        
+        Reply strictly valid JSON: {{"is_relevant": true}} or {{"is_relevant": false}}
+        """
+        try:
+            res_json, usage = self.ai.generate_json(prompt, self.flash_model_name)
+            
+            # Save Metric
+            from scanner.db import save_scan_metric
+            cost = self._calculate_cost(self.flash_model_name, usage["input_tokens"], usage["output_tokens"])
+            save_scan_metric(self.db_path, run_id, self.flash_model_name, usage["input_tokens"], usage["output_tokens"], cost)
+            
+            return res_json.get("is_relevant", False)
+        except Exception as e:
+            print(f"Tier 1 Error: {e}")
+            return True # Fail open
+
+    def _ask_pro_deep_dive(self, context: str, run_id: str) -> List[InventoryItem]:
         """Returns detailed inventory items."""
         prompt = f"""
         You are a Senior Cryptography Auditor.
@@ -99,7 +192,14 @@ class FileAnalystAgent:
         ]
         """
         try:
-            return self.ai.generate_json(prompt, self.pro_model_name)
+            res_json, usage = self.ai.generate_json(prompt, self.pro_model_name)
+            
+            # Save Metric
+            from scanner.db import save_scan_metric
+            cost = self._calculate_cost(self.pro_model_name, usage["input_tokens"], usage["output_tokens"])
+            save_scan_metric(self.db_path, run_id, self.pro_model_name, usage["input_tokens"], usage["output_tokens"], cost)
+            
+            return res_json
         except Exception as e:
              print(f"Tier 2 Error: {e}")
              return []

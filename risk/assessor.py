@@ -58,6 +58,22 @@ class RiskAssessor:
             content += f"- **{r['algo']}** in `{r['path']}:{r['line']}`\n"
             content += f"  - > {r['desc']}\n\n"
             
+        # Cost Analysis
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute("SELECT SUM(input_tokens), SUM(output_tokens), SUM(cost_usd) FROM scan_metrics WHERE run_id = ?", (run_id,))
+        row = c.fetchone()
+        conn.close()
+        
+        in_tok = row[0] or 0
+        out_tok = row[1] or 0
+        total_cost = row[2] or 0.0
+        
+        content += "## AI Usage & Cost\n"
+        content += f"- **Total Cost:** ${total_cost:.4f}\n"
+        content += f"- **Input Tokens:** {in_tok:,}\n"
+        content += f"- **Output Tokens:** {out_tok:,}\n\n"
+            
         content += "## Inventory\n"
         for r in risks:
              icon = "🔴" if r['level'] == "high" else "🟢"

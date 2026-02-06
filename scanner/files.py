@@ -55,14 +55,17 @@ class ArtifactScanner:
     def __init__(self, repo_path: str):
         self.repo_path = Path(repo_path)
 
-    def scan(self):
+    def scan(self) -> List[Suspect]:
         """
-        Yields relative file paths to be analyzed.
+        Returns list of Suspects for interesting files.
         SECURITY: followlinks=False prevents symlink traversal attacks.
         """
+        suspects = []
+        exclude_dirs = {'.git', 'node_modules', 'venv', 'env', 'dist', 'build', '__pycache__', '.next', '.idea', '.vscode'}
+        
         for dirpath, dirnames, filenames in os.walk(self.repo_path, followlinks=False):
-            # Explicitly ignore .git and hidden metadata directories
-            dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+            # Explicitly ignore .git and hidden metadata directories AND noisy build/dep dirs
+            dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in exclude_dirs]
             
             for f in filenames:
                 # Basic Binary Exclusion (can be improved)
@@ -71,7 +74,20 @@ class ArtifactScanner:
                     
                 full_path = Path(dirpath) / f
                 try:
-                    rel_path = str(full_path.relative_to(self.repo_path))
-                    yield rel_path
+                    # rel_path = str(full_path.relative_to(self.repo_path)) # Not needed for Suspect path usually, but keeping full path is safer for open() later
+                    
+                    # Check if extension is interesting
+                    ext = full_path.suffix
+                    if ext in SUSPICIOUS_EXTENSIONS:
+                         suspects.append(Suspect(
+                            path=str(full_path),
+                            line=0,
+                            content_snippet=f"Found artifact: {SUSPICIOUS_EXTENSIONS[ext]}",
+                            type="artifact",
+                            pattern_matched=ext,
+                            confidence="medium"
+                        ))
+
                 except ValueError:
                     continue
+        return suspects

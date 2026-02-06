@@ -39,6 +39,19 @@ def init_db(db_path: str):
     )
     ''')
 
+    # New Table: Scan Metrics
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS scan_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id TEXT,
+        model TEXT,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        cost_usd REAL,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -60,5 +73,16 @@ def save_suspects(db_path: str, run_id: str, suspects: List[Suspect]):
     VALUES (?, ?, ?, ?, ?, ?, ?)
     ''', data)
     
+    conn.commit()
+    conn.close()
+
+def save_scan_metric(db_path: str, run_id: str, model: str, input_tokens: int, output_tokens: int, cost: float):
+    """Saves a single AI interaction metric."""
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute('''
+    INSERT INTO scan_metrics (run_id, model, input_tokens, output_tokens, cost_usd)
+    VALUES (?, ?, ?, ?, ?)
+    ''', (run_id, model, input_tokens, output_tokens, cost))
     conn.commit()
     conn.close()

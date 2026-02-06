@@ -1,5 +1,8 @@
 import typer
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 import json
 import time
 from pathlib import Path
@@ -46,8 +49,36 @@ def scan(
     
     output_dir = Path("output") / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
-    db_path = str(output_dir / "pqc.db")
-    init_db(db_path)
+    
+    # DB Setup: Use Central DB from Env or Default
+    db_url = os.getenv("DATABASE_URL", "sqlite:///data/pqc.db")
+    
+    # Handle different DB Schemas
+    if db_url.startswith("sqlite"):
+        # Extract path from sqlite:///path/to/db or sqlite://path/to/db
+        # Remove prefix to get file path
+        if db_url.startswith("sqlite:///"):
+            db_path = db_url.replace("sqlite:///", "")
+        elif db_url.startswith("sqlite://"):
+             db_path = db_url.replace("sqlite://", "")
+        else:
+             db_path = db_url.replace("sqlite:", "")
+
+        # Ensure DB directory exists if it's a file path
+        db_file_path = Path(db_path)
+        if not db_file_path.parent.exists():
+            db_file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+        init_db(str(db_file_path))
+        console.print(f"  Using Local Database: {db_file_path}")
+    else:
+        # Remote DB (Postgres, MySQL, etc.)
+        # init_db would need to handle connection string. 
+        # For now, we assume init_db accepts the connection string directly for non-sqlite
+        # or we might need to update scanner/db.py to handle sqlalchemy URLs if we move to that.
+        # But for this CLI scope, we just pass it through.
+        init_db(db_url) 
+        console.print(f"  Using Remote Database: {db_url}")
     
     console.print(Panel(f"Starting PQC Scan\nRun ID: {run_id}\nTarget: {repo_path}\nOutput: {output_dir}", title="PQC Assessment"))
 
