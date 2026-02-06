@@ -1,6 +1,8 @@
 # LatticeGuard - Post-Quantum Cryptography (PQC) Assessment Tool
 
 > **Built by PayNet R&D**
+>
+> ⚠️ **Disclaimer**: This tool is under active development. Please use with care.
 
 A specialized tool designed to scan enterprise repositories for cryptographic assets, assess their vulnerability to Quantum Computers (Shor's Algorithm), and generate compliance reports (SARIF/Markdown).
 
