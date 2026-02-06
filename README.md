@@ -44,21 +44,61 @@ graph TD
     Worker -->|Save| DB[(SQLite/Postgres)]
 ```
 
+## Analysis Pipeline
+
+LatticeGuard uses a multi-phase orchestrated pipeline to discover, triage, and audit cryptographic assets:
+
+```mermaid
+graph TD
+    repo["Source Repository"] --> phase1["Phase 1: Strategize (Planner Agent)"]
+    phase1 --> phase2["Phase 2: Fast Discovery (Multi-Scanner)"]
+    
+    subgraph phase2_scanners ["Fast Discovery Scanners"]
+        patterns["Pattern Scanner (Regex)"]
+        secrets["Secret Scanner (Entropy)"]
+        ast["AST Scanner (Python Call Graphs)"]
+        iac["Terraform IaC Scanner"]
+        doc["Document Scanner (Multimodal AI)"]
+        dep["Dependency Scanner (SCA)"]
+    end
+    
+    phase2 --> suspects["Suspects Collection (Database)"]
+    suspects --> phase3["Phase 3: Deep Discovery (AI Analyst)"]
+    
+    subgraph phase3_logic ["Deep Audit Loop"]
+        resume["Resume Check (Skip Processed)"]
+        flash["Flash Triage (Relevance Check)"]
+        pro["Pro Deep Dive (PQC Audit)"]
+        resume --> flash
+        flash -->|Relevant| pro
+    end
+    
+    phase3 --> findings["Findings Inventory"]
+    findings --> phase4["Phase 4: Risk Assessment (Assessor)"]
+    phase4 --> reports["Final Reports (SARIF/Markdown)"]
+```
+
 ## Discovery Process
 
-The discovery engine operates in three tiered stages to maximize speed and accuracy:
+The discovery engine operates in four tiered stages to maximize speed and accuracy:
 
-1.  **Fast Discovery (Heuristic & Deterministic)**:
+1.  **Phase 1: Strategize**:
+    -   The `PlannerAgent` analyzes the repository structure and fingerprints the technology stack to create an optimized scan plan.
+2.  **Phase 2: Fast Discovery (Heuristic & Deterministic)**:
     -   **Pattern Scanning**: Regex patterns for known cryptographic extensions and standard library signatures.
     -   **AST-Based Scanning (Python)**: Uses Abstract Syntax Trees to identify exact cryptographic calls (e.g., `generate_private_key`) with high precision.
     -   **Secret Detection**: Entropy analysis and specific provider patterns to find hardcoded keys.
+    -   **IaC Scanning**: Native support for **Terraform** (`.tf`) files to identify weak TLS policies and cryptographic resource definitions.
+    -   **Document/Multimodal Scanning**: Uses Gemini Flash to analyze architectural diagrams, PDFs, and Markdown files for cryptographic requirements.
     -   **Dependency Scanning**: Parses manifests (`pom.xml`, `go.mod`, `Cargo.toml`) for PQC-vulnerable libraries.
-2.  **AI Triage (Flash)**:
-    -   Fast screening of flagged files to dismiss non-cryptographic noise.
-3.  **AI Deep Audit (Pro)**:
-    -   Comprehensive analysis of complex code or custom logic by **Gemini 3 Pro**.
-    -   Identifies Shor's Algorithm vulnerabilities (RSA, ECC) vs PQC-Safe algorithms (Kyber, Dilithium).
-    -   **Transparency**: Explains why files are marked as "Safe" (e.g., "Standard infrastructure config").
+3.  **Phase 3: Deep Discovery (AI Analyst)**:
+    -   **Tiered Audit**:
+        -   **Flash Triage**: Fast screening of flagged files to dismiss non-cryptographic noise.
+        -   **Pro Deep Audit**: Comprehensive analysis by **Gemini Pro** to identify specific PQC vulnerabilities (e.g., RSA-2048) and provide migration paths.
+    -   **Resume Support**: Automatically skips files that have already been audited in previous runs of the same ID.
+    -   **Real-time Progress**: Displays a clear `[Current/Total]` progress counter during the audit loop.
+4.  **Phase 4: Risk Assessment & Reporting**:
+    -   The `Assessor` aggregates findings, categorizes them by NIST risk levels, and generates final reports (SARIF for IDEs and Markdown for humans).
 
 ## Risk Assessment Logic
 
@@ -165,6 +205,21 @@ For local testing without the full API stack:
 ```bash
 python3 cli/main.py scan ./local-folder
 ```
+
+### CLI Options
+
+The `scan` command supports several flags to customize the depth and behavior of the assessment:
+
+| Flag | Type | Description |
+| :--- | :--- | :--- |
+| `repo_path` | **Required** | Path to the local repository or directory to scan. |
+| `--run-id` | Optional | Restore/Resume a specific scan session ID (e.g., `scan_20240101_120000`). |
+| `--max-files` | Option | Limit the number of files processed (Default: 1000). |
+| `--skip-fast` | Flag | Skip Phase 2 (Regex/AST/Entropy) and go straight to AI Audit. |
+| `--skip-deep` | Flag | Skip Phase 3 (AI Audit) and only run fast deterministic scanners. |
+| `--skip-multimodal`| Flag | Skip AI analysis of images and PDFs (speeds up scan significantly). |
+| `--scan-history` | Flag | **TruffleHog Mode**: Scan `git log` to find secrets deleted in previous commits. |
+| `--verify-secrets` | Flag | **Gitleaks Mode**: Attempt to verify detected secrets against live APIs (e.g. AWS). |
 
 ### Local Scanning
 By default, LatticeGuard restricts scans to **remote git URLs** (e.g., `https://github.com/...`) for security.

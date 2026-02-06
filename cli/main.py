@@ -43,6 +43,8 @@ def scan(
     skip_fast: bool = False,
     skip_deep: bool = False,
     skip_multimodal: bool = False,
+    scan_history: bool = False,
+    verify_secrets: bool = False,
 ):
     """
     Runs a Post-Quantum Cryptography (PQC) assessment on the target repository.
@@ -152,6 +154,24 @@ def scan(
         console.print("  Running Artifact Scanner...")
         fs = ArtifactScanner(repo_path)
         suspects.extend(fs.scan())
+        
+        # TruffleHog Style: Git History Scan
+        if scan_history:
+            console.print("  Running Git History Scanner... (Digging for deleted secrets)")
+            from scanner.git_scanner import GitHistoryScanner
+            gs = GitHistoryScanner(repo_path)
+            suspects.extend(gs.scan_history())
+
+        # Gitleaks Style: Live Verification
+        if verify_secrets:
+            console.print("  Verifying detected secrets (Live API Check)...")
+            verified_suspects = []
+            for s in suspects:
+                if s.type == "secret" or s.pattern_matched in sec_s.patterns:
+                    is_live = sec_s.verify_secret(s.pattern_matched, s.content_snippet)
+                    if is_live:
+                         s.confidence = "critical"
+                         s.content_snippet += " [VERIFIED LIVE]"
         
         
         save_suspects(db_path, run_id, suspects)

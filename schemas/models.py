@@ -22,7 +22,7 @@ class Suspect(BaseModel):
     path: str
     line: int
     content_snippet: str
-    type: Literal["code", "infra", "artifact"]
+    type: Literal["code", "infra", "artifact", "secret"]
     pattern_matched: str
     confidence: Literal["low", "medium", "high"]
 
