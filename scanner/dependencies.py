@@ -16,8 +16,15 @@ class DependencyScanner:
             # Java
             "bouncycastle": "Check version. Pre-1.78 is often weak vs PQC.",
             # General/Other
-            "paramiko": "SSHv1/v2 impl. Check for weak KEX usage.",
-            "hazmat": "Low-level crypto primitives. High risk of misuse."
+            "hazmat": "Low-level crypto primitives. High risk of misuse.",
+            # Go
+            "crypto/rsa": "Standard Go RSA implementation. Vulnerable to Shor's.",
+            "crypto/ecdsa": "Standard Go ECDSA implementation. Vulnerable to Shor's.",
+            # Rust
+            "rsa": "Pure Rust RSA implementation. Vulnerable to Shor's.",
+            "ed25519-dalek": "Standard Ed25519 (ECC). Vulnerable to Shor's.",
+            # Java
+            "org.bouncycastle": "Universal Java crypto provider. Check for PQC provider usage."
         }
 
     def scan(self) -> List[Suspect]:

@@ -16,6 +16,8 @@ from scanner.db import init_db, save_suspects
 from scanner.patterns import PatternScanner
 from scanner.dependencies import DependencyScanner
 from scanner.files import ArtifactScanner
+from scanner.ast_scanner import ASTScanner
+from scanner.secret_scanner import SecretScanner
 from agents.file_analyst import FileAnalystAgent
 from agents.graph import GraphAgent
 from risk.assessor import RiskAssessor
@@ -100,8 +102,32 @@ def scan(
         # Patterns
         console.print("  Running Pattern Scanner...")
         ps = PatternScanner(repo_path)
-        suspects.extend(ps.scan())
+        # Actually we need to loop through files for PatternScanner.scan_file if we want to be granular,
+        # but main.py currently calls ps.scan(). Let's check ps.scan() implementation again.
+        # wait, ps.scan() in main.py 103 seems intended for a full repo walk.
         
+        # For Phase 1, I will update the orchestrator loop to walk once and call all scanners.
+        
+        ast_s = ASTScanner()
+        sec_s = SecretScanner()
+        
+        for dirpath, dirnames, filenames in os.walk(repo_path):
+            # Filter in-place
+            dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in {'.venv', 'node_modules', '.git'}]
+            
+            for f in filenames:
+                file_path = Path(dirpath) / f
+                
+                # Pattern Scan
+                suspects.extend(ps.scan_file(file_path))
+                
+                # AST Scan (Python only)
+                if f.endswith(".py"):
+                    suspects.extend(ast_s.scan_file(file_path))
+                    
+                # Secret Scan
+                suspects.extend(sec_s.scan_file(file_path))
+
         # Dependencies
         console.print("  Running Dependency Scanner...")
         ds = DependencyScanner(repo_path)
@@ -111,6 +137,7 @@ def scan(
         console.print("  Running Artifact Scanner...")
         fs = ArtifactScanner(repo_path)
         suspects.extend(fs.scan())
+        
         
         save_suspects(db_path, run_id, suspects)
         console.print(f"  Found {len(suspects)} suspects.")
