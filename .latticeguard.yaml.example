@@ -1,0 +1,93 @@
+# LatticeGuard Configuration
+# Place this file in your repository root as .latticeguard.yaml
+
+# Environment Configuration
+# Tag your repository to adjust risk scoring based on environment
+environment: production  # development | staging | production
+
+# Data Classification (for HNDL scoring)
+data:
+  longevity_years: 10  # How long does data need protection?
+  sensitivity: confidential  # public | internal | confidential | secret | pii | financial | health
+
+# Scan Thresholds
+thresholds:
+  # Fail CI/CD pipeline if findings exceed these thresholds
+  fail_on: high  # low | medium | high | critical
+  max_critical: 0
+  max_high: 5
+  max_medium: 20
+
+# Suppression Rules
+# Suppress findings that are false positives or accepted risks
+suppressions:
+  # Suppress by file path patterns (glob)
+  paths:
+    - "**/test/**"
+    - "**/tests/**"
+    - "**/__tests__/**"
+    - "**/fixtures/**"
+    - "**/mocks/**"
+    - "**/.git/**"
+    - "**/node_modules/**"
+    - "**/vendor/**"
+  
+  # Suppress by algorithm (accepted risk)
+  algorithms:
+    # Example: Accept RSA-4096 for now (approved by security team)
+    # - algorithm: "RSA-4096"
+    #   reason: "Approved exception until 2027 migration"
+    #   expires: "2027-12-31"
+    #   ticket: "SEC-1234"
+  
+  # Suppress by finding ID
+  findings:
+    # - id: "path/to/file.py:123:RSA-2048"
+    #   reason: "Test fixture, not production code"
+    #   approved_by: "security-team@company.com"
+
+# Algorithm Allowlist
+# Only these algorithms are considered "safe" (quantum-safe)
+quantum_safe_algorithms:
+  - ML-KEM
+  - ML-DSA
+  - CRYSTALS-Kyber
+  - CRYSTALS-Dilithium
+  - Falcon
+  - SPHINCS+
+  - AES-256
+  - AES-256-GCM
+  - ChaCha20-Poly1305
+  - SHA-256
+  - SHA-384
+  - SHA-512
+  - SHA-3
+
+# Algorithm Blocklist
+# These algorithms should always be flagged (even in development)
+blocked_algorithms:
+  - DES
+  - 3DES
+  - MD5
+  - SHA1
+  - RC4
+  - RSA-1024
+  - DSA-1024
+
+# Reporting
+reporting:
+  # Include remediation guidance in reports
+  include_remediation: true
+  # Group findings by algorithm family
+  group_by_algorithm: true
+  # Include HNDL scores
+  include_hndl: true
+
+# CI/CD Integration
+ci:
+  # Create GitHub PR comments
+  github_comments: true
+  # Upload SARIF to GitHub Security tab
+  upload_sarif: true
+  # Block PR merge on threshold breach
+  block_on_failure: true

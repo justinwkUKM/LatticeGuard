@@ -39,6 +39,37 @@ class InventoryItem(BaseModel):
     is_pqc_vulnerable: bool
     description: str
     remediation: Optional[str] = None
+    
+    # Algorithm Details (Must-Capture)
+    cipher_mode: Optional[str] = None  # CBC, GCM, ECB, CTR, etc.
+    hash_algorithm: Optional[str] = None  # SHA-256, SHA-1, MD5, etc.
+    
+    # Key Lifecycle Metadata (Must-Capture)
+    key_created_at: Optional[str] = None  # ISO datetime string
+    key_expires_at: Optional[str] = None  # ISO datetime string
+    rotation_frequency_days: Optional[int] = None  # How often key rotates
+    
+    # Library Info (Must-Capture)
+    library_name: Optional[str] = None  # OpenSSL, BouncyCastle, PyCryptodome, etc.
+    library_version: Optional[str] = None  # Version string
+    
+    # Protocol Details (Must-Capture)
+    protocol_version: Optional[str] = None  # TLS 1.2, TLS 1.3, SSH-2, etc.
+    has_pfs: Optional[bool] = None  # Perfect Forward Secrecy support
+    
+    # Ownership (Must-Capture)
+    owner_team: Optional[str] = None  # Responsible team
+    owner_contact: Optional[str] = None  # Owner email/ID
+    
+    # HNDL Risk Scoring (Phase 2)
+    data_longevity_years: Optional[int] = None  # How long data needs protection
+    data_sensitivity: Optional[Literal["public", "internal", "confidential", "secret", "pii", "financial", "health"]] = None
+    hndl_score: Optional[float] = None  # Calculated HNDL risk (0-10)
+    risk_level: Optional[Literal["critical", "high", "medium", "low", "info"]] = None
+    
+    # Metadata
+    source_type: Optional[Literal["code", "infra", "network", "dependency", "secret"]] = None
+    cloud_provider: Optional[Literal["aws", "gcp", "azure", "other"]] = None
 
 class UsageLocation(BaseModel):
     path: str

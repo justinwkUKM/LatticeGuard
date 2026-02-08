@@ -11,20 +11,30 @@ The name implies **Guarding** your infrastructure using **Lattice-based Cryptogr
 Lattices are the mathematical foundation behind the most resilient Post-Quantum algorithms (like **Kyber** and **Dilithium**). While traditional RSA and Elliptic Curve systems fall to Quantum Computers (Shor's Algorithm), Lattice-based problems (like *Learning With Errors*) remain secure. This tool helps you bridge that gap.
 
 
-## Key Features
--   **Enterprise Scale**: Uses an event-driven architecture (Redis Queue) to process massive repositories asynchronously.
--   **Expanded Discovery**:
-    -   **Code**: Python (AST-based), JS, Java (Maven), Rust (Cargo), Go (go.mod).
-    -   **Secrets**: Entropy-based detection for AWS, GCP, and Stripe keys.
-    -   **Infra**: Docker, Kubernetes, Terraform.
-    -   **Data**: SQL Dumps, Config Files.
-    -   **Network**: Live TLS/SSL Handshake Analysis.
-    -   **SCA**: Dependency Scanning for known weak libraries (`pycrypto`, `bouncycastle`).
-    -   **History**: "Ghost" Scanning to find deleted secrets in `git log`.
--   **Transparency & Costing**: AI analysis now includes detailed reasoning for "Verified Safe" findings and automated token/cost tracking per scan.
--   **IaC Ready**: Native support for scanning Terraform (`.tf`) files for weak TLS policies and cryptographic resource definitions.
--   **Risk Assessment**: Classifies findings based on the NIST PQC Migration Guidelines (including a new "Verify Safe" tier).
--   **Docker Native**: Fully containerized for easy local deployment or cloud scaling.
+## Platform Capabilities
+
+LatticeGuard is an enterprise-grade platform providing multi-layer visibility into cryptographic risk:
+
+### 🔍 Discovery Layers
+- **Advanced SAST**: Precise AST-based scanning for **Python, Go, JavaScript, Java, and C++** using customized tree-sitter grammars.
+- **IaC & Infrastructure**: Native support for **Kubernetes** manifests, **Terraform**, and **CloudFormation** to identify TLS/KMS misconfigurations.
+- **SCA (Supply Chain)**: Dependency analysis for manifests (`pom.xml`, `go.mod`, etc.) to flag PQC-vulnerable libraries.
+- **Git History Mining**: Deep log analysis to uncover hardcoded secrets or keys deleted in previous commits.
+
+### 🛡️ Risk Orchestration
+- **HNDL Risk Scoring**: Proprietary "Harvest Now, Decrypt Later" model incorporating data longevity and sensitivity.
+- **AI-Tiered Analysis**: Uses dual-model (Gemini Flash/Pro) logic to provide context-aware remediation and migration paths.
+- **Suppression Engine**: Scalable glob-based filtering to manage false positives and enterprise noise.
+
+### 📊 Compliance & Reporting
+- **NIST/CNSA Reports**: Professional PDF exports mapping findings to NIST SP 800-208 and CNSA 2.0 timelines.
+- **CBOM Generation**: Automated Cryptographic Bill of Materials in CycloneDX 1.6 format.
+- **Agility Registry**: Dashboard for tracking algorithm distribution and cryptographic agility across the organization.
+- **Blast Radius Graph**: Interactive D3.js visualization to understand risk propagation through service dependencies.
+
+### 🌐 Network & Cloud
+- **TLS Fingerprinting**: Live detection of TLS versions and cipher suite support on remote endpoint.
+- **AWS Discovery**: Auto-inventory of KMS keys and ACM certificates (GCP/Azure in preview).
 
 ## Architecture
 
@@ -86,11 +96,11 @@ The discovery engine operates in four tiered stages to maximize speed and accura
     -   The `PlannerAgent` analyzes the repository structure and fingerprints the technology stack to create an optimized scan plan.
 2.  **Phase 2: Fast Discovery (Heuristic & Deterministic)**:
     -   **Pattern Scanning**: Regex patterns for known cryptographic extensions and standard library signatures.
-    -   **AST-Based Scanning (Python)**: Uses Abstract Syntax Trees to identify exact cryptographic calls (e.g., `generate_private_key`) with high precision.
-    -   **Secret Detection**: Entropy analysis and specific provider patterns to find hardcoded keys.
-    -   **IaC Scanning**: Native support for **Terraform** (`.tf`) files to identify weak TLS policies and cryptographic resource definitions.
-    -   **Document/Multimodal Scanning**: Uses Gemini Flash to analyze architectural diagrams, PDFs, and Markdown files for cryptographic requirements.
-    -   **Dependency Scanning**: Parses manifests (`pom.xml`, `go.mod`, `Cargo.toml`) for PQC-vulnerable libraries.
+    - **AST-Based Scanning**: High-precision analysis for **Python** (native AST), **Java**, and **C++** using **Tree-sitter** customized grammars and method invocation queries.
+    - **Secret Detection**: Entropy analysis and specific provider patterns to find hardcoded keys.
+    - **IaC Scanning**: Native support for **Kubernetes** manifests and **Terraform** (`.tf`) files to identify weak TLS policies, insecure secrets, and cryptographic misconfigurations.
+    - **Document/Multimodal Scanning**: Uses Gemini Flash to analyze architectural diagrams, PDFs, and Markdown files for cryptographic requirements.
+    - **Dependency Scanning (SCA)**: Deep manifest parsing (`pom.xml`, `go.mod`, `Cargo.toml`, `package.json`, `requirements.txt`) for PQC-vulnerable library identification.
 3.  **Phase 3: Deep Discovery (AI Analyst)**:
     -   **Tiered Audit**:
         -   **Flash Triage**: Fast screening of flagged files to dismiss non-cryptographic noise.

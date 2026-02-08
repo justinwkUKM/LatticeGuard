@@ -11,9 +11,13 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DATABASE_URL=sqlite:////data/pqc.db
+      - ALLOW_LOCAL_SCAN=true
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
     volumes:
       - .:/app
       - ./data:/data
+      - /Users/waqas/Documents:/Users/waqas/Documents
     depends_on:
       - redis
 
@@ -30,10 +34,14 @@ services:
       - REDIS_PORT=6379
       - DATABASE_URL=sqlite:////data/pqc.db
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GEMINI_MODEL=gemini-3-pro-preview
+      - GEMINI_MODEL=gemini-3-flash-preview
+      - ALLOW_LOCAL_SCAN=true
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
     volumes:
       - .:/app
       - ./data:/data
+      - /Users/waqas/Documents:/Users/waqas/Documents
     depends_on:
       - redis
 
@@ -52,3 +60,15 @@ services:
       - "8081:8081"
     depends_on:
       - redis
+
+  # Frontend Dashboard
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend

@@ -20,7 +20,16 @@ dependencies = [
     "httpx",
     "typer",
     "rich",
-    "google-generativeai"
+    "google-genai",
+    "python-dotenv",
+    # Phase 4: Tree-sitter for Java/C++ AST
+    "tree-sitter>=0.21.0",
+    "tree-sitter-java>=0.21.0",
+    "tree-sitter-cpp>=0.22.0",
+    # Phase 4: K8s manifest parsing
+    "pyyaml>=6.0",
+    # Phase 4: PDF reports
+    "reportlab>=4.0.0",
 ]
 
 [project.optional-dependencies]

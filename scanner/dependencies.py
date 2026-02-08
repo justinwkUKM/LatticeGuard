@@ -40,10 +40,10 @@ class DependencyScanner:
             for f in filenames:
                 if f in manifests:
                     file_path = Path(dirpath) / f
-                    suspects.extend(self._scan_file(file_path))
+                    suspects.extend(self.scan_file(file_path))
         return suspects
 
-    def _scan_file(self, file_path: Path) -> List[Suspect]:
+    def scan_file(self, file_path: Path) -> List[Suspect]:
         suspects = []
         try:
             content = ""

@@ -93,13 +93,19 @@ class FileAnalystAgent:
         1. Fast Check (Flash) -> Is this strictly Cryptographic?
         2. Deep Audit (Pro) -> Extract details and assess PQC risk.
         """
-        if not suspects:
-            return
-
         # Prepare Context
-        # We assume suspects contains snippets. We can verify if we need to read the full file.
-        # For cost saving, let's just use the snippets combined.
-        snippets = "\n".join([f"Line {s.line}: {s.content_snippet}" for s in suspects])
+        if suspects:
+            snippets = "\n".join([f"Line {s.line}: {s.content_snippet}" for s in suspects])
+        else:
+            # Forced analysis for high-signal artifacts that didn't hit regex
+            try:
+                # Read more of the file (up to 500KB) to ensure we find risks deep in JSON/metadata
+                with open(file_path, "r", errors="ignore") as f:
+                    content = f.read(500000)
+                    snippets = "GENERIC ARTIFACT AUDIT (Content Sample):\n" + content
+            except Exception as e:
+                snippets = f"Error reading file for forced analysis: {e}"
+        
         context = f"File: {file_path}\nTarget Pattern Matches:\n{snippets}"
         
         if self.arch_context:

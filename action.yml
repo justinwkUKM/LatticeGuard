@@ -1,0 +1,137 @@
+name: 'LatticeGuard PQC Scanner'
+description: 'Scan your repository for Post-Quantum Cryptography vulnerabilities'
+author: 'LatticeGuard'
+branding:
+  icon: 'shield'
+  color: 'purple'
+
+inputs:
+  path:
+    description: 'Path to scan (relative to repository root)'
+    required: false
+    default: '.'
+  fail-on:
+    description: 'Minimum severity to fail the check (low, medium, high, critical)'
+    required: false
+    default: 'high'
+  longevity:
+    description: 'Data retention years for HNDL risk scoring'
+    required: false
+    default: '5'
+  sensitivity:
+    description: 'Data sensitivity classification (public, internal, confidential, secret, pii, financial, health)'
+    required: false
+    default: 'internal'
+  upload-sarif:
+    description: 'Upload SARIF results to GitHub Security tab'
+    required: false
+    default: 'true'
+  create-comment:
+    description: 'Create a PR comment with findings summary'
+    required: false
+    default: 'true'
+
+outputs:
+  total-findings:
+    description: 'Total number of findings'
+    value: ${{ steps.scan.outputs.total-findings }}
+  critical-count:
+    description: 'Number of critical findings'
+    value: ${{ steps.scan.outputs.critical-count }}
+  passed:
+    description: 'Whether the scan passed threshold checks'
+    value: ${{ steps.scan.outputs.passed }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install LatticeGuard
+      shell: bash
+      run: |
+        pip install pydantic redis
+        echo "LatticeGuard installed successfully"
+    
+    - name: Run PQC Scan
+      id: scan
+      shell: bash
+      run: |
+        cd ${{ github.action_path }}
+        python cli/cicd_scanner.py scan "${{ github.workspace }}/${{ inputs.path }}" \
+          --fail-on ${{ inputs.fail-on }} \
+          --longevity ${{ inputs.longevity }} \
+          --sensitivity ${{ inputs.sensitivity }} \
+          --format sarif \
+          -o ${{ github.workspace }}/latticeguard-results.sarif || exit_code=$?
+        
+        # Parse results for outputs
+        if [ -f "${{ github.workspace }}/latticeguard-results.sarif" ]; then
+          findings=$(jq '.runs[0].results | length' ${{ github.workspace }}/latticeguard-results.sarif)
+          echo "total-findings=$findings" >> $GITHUB_OUTPUT
+        fi
+        
+        if [ "$exit_code" == "2" ]; then
+          echo "passed=false" >> $GITHUB_OUTPUT
+        else
+          echo "passed=true" >> $GITHUB_OUTPUT
+        fi
+        
+        exit ${exit_code:-0}
+    
+    - name: Upload SARIF to GitHub Security
+      if: inputs.upload-sarif == 'true' && always()
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: latticeguard-results.sarif
+        category: pqc-assessment
+    
+    - name: Create PR Comment
+      if: inputs.create-comment == 'true' && github.event_name == 'pull_request' && always()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          let comment = '## 🔐 LatticeGuard PQC Assessment\n\n';
+          
+          try {
+            const sarif = JSON.parse(fs.readFileSync('latticeguard-results.sarif', 'utf8'));
+            const results = sarif.runs[0].results || [];
+            
+            if (results.length === 0) {
+              comment += '✅ **No PQC vulnerabilities found!**\n\n';
+              comment += 'Your code is ready for the quantum era.';
+            } else {
+              const critical = results.filter(r => r.level === 'error').length;
+              const warning = results.filter(r => r.level === 'warning').length;
+              
+              comment += `| Severity | Count |\n|----------|-------|\n`;
+              comment += `| 🔴 Critical/High | ${critical} |\n`;
+              comment += `| 🟡 Medium/Low | ${warning} |\n\n`;
+              
+              comment += '### Top Findings\n\n';
+              results.slice(0, 5).forEach(r => {
+                const file = r.locations[0]?.physicalLocation?.artifactLocation?.uri || 'Unknown';
+                const line = r.locations[0]?.physicalLocation?.region?.startLine || 0;
+                comment += `- **${r.ruleId}**: \`${file}:${line}\`\n`;
+              });
+              
+              if (results.length > 5) {
+                comment += `\n_...and ${results.length - 5} more findings_\n`;
+              }
+              
+              comment += '\n📋 See the Security tab for full details.';
+            }
+          } catch (e) {
+            comment += '⚠️ Error parsing scan results.';
+          }
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });

@@ -38,6 +38,8 @@ SUSPICIOUS_EXTENSIONS = {
     ".pub": "Public Key",
     ".asc": "PGP Key",
     ".tf": "Terraform Infrastructure",
+    ".tfstate": "Terraform State",
+    ".tfstate.backup": "Terraform State Backup",
     
     # Infra & Containers
     "Dockerfile": "Container Build",
@@ -78,17 +80,20 @@ class ArtifactScanner:
                     
                 full_path = Path(dirpath) / f
                 try:
-                    # rel_path = str(full_path.relative_to(self.repo_path)) # Not needed for Suspect path usually, but keeping full path is safer for open() later
+                    filename = full_path.name
+                    match_key = None
+                    for ext_key, desc in SUSPICIOUS_EXTENSIONS.items():
+                        if filename == ext_key or filename.endswith(ext_key):
+                            match_key = ext_key
+                            break
                     
-                    # Check if extension is interesting
-                    ext = full_path.suffix
-                    if ext in SUSPICIOUS_EXTENSIONS:
-                         suspects.append(Suspect(
+                    if match_key:
+                        suspects.append(Suspect(
                             path=str(full_path),
                             line=0,
-                            content_snippet=f"Found artifact: {SUSPICIOUS_EXTENSIONS[ext]}",
+                            content_snippet=f"Found artifact: {SUSPICIOUS_EXTENSIONS[match_key]}",
                             type="artifact",
-                            pattern_matched=ext,
+                            pattern_matched=match_key,
                             confidence="medium"
                         ))
 

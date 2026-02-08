@@ -1,0 +1,130 @@
+# LatticeGuard PQC Scan
+# This workflow scans your repository for Post-Quantum Cryptography vulnerabilities
+# and uploads results to GitHub Security tab.
+
+name: PQC Security Scan
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    # Run weekly on Sunday at midnight
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  pqc-scan:
+    name: PQC Vulnerability Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install pydantic redis
+      
+      - name: Clone LatticeGuard
+        run: |
+          git clone https://github.com/latticeguard/pqc-assessment.git /tmp/latticeguard
+      
+      - name: Run PQC Scan
+        id: scan
+        continue-on-error: true
+        run: |
+          cd /tmp/latticeguard
+          python cli/cicd_scanner.py scan ${{ github.workspace }} \
+            --fail-on high \
+            --longevity 5 \
+            --sensitivity internal \
+            --format sarif \
+            -o ${{ github.workspace }}/latticeguard-results.sarif
+          
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+      
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: latticeguard-results.sarif
+          category: pqc-assessment
+      
+      - name: Create Summary
+        if: always()
+        run: |
+          echo "## 🔐 LatticeGuard PQC Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "latticeguard-results.sarif" ]; then
+            findings=$(jq '.runs[0].results | length' latticeguard-results.sarif)
+            echo "**Total Findings:** $findings" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "$findings" -eq "0" ]; then
+              echo "✅ No PQC vulnerabilities found!" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ Review findings in the Security tab." >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⚠️ Scan results not available." >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let comment = '## 🔐 LatticeGuard PQC Scan\n\n';
+            
+            try {
+              const sarif = JSON.parse(fs.readFileSync('latticeguard-results.sarif', 'utf8'));
+              const results = sarif.runs[0].results || [];
+              
+              if (results.length === 0) {
+                comment += '✅ **No PQC vulnerabilities found!**\n';
+                comment += 'Your code is ready for the quantum era.';
+              } else {
+                comment += `Found **${results.length}** potential PQC vulnerabilities.\n\n`;
+                comment += '| Severity | File | Algorithm |\n|----------|------|----------|\n';
+                
+                results.slice(0, 10).forEach(r => {
+                  const level = r.level === 'error' ? '🔴 High' : '🟡 Medium';
+                  const file = r.locations[0]?.physicalLocation?.artifactLocation?.uri?.split('/').pop() || 'Unknown';
+                  const algo = r.properties?.algorithm || 'Unknown';
+                  comment += `| ${level} | ${file} | ${algo} |\n`;
+                });
+                
+                if (results.length > 10) {
+                  comment += `\n_...and ${results.length - 10} more_\n`;
+                }
+              }
+            } catch (e) {
+              comment += '⚠️ Error reading scan results.';
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+      
+      - name: Fail on threshold
+        if: steps.scan.outputs.exit_code == '2'
+        run: |
+          echo "❌ PQC vulnerabilities found above threshold!"
+          exit 1

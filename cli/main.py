@@ -22,6 +22,7 @@ from scanner.go_ast_scanner import GoScanner
 from scanner.secret_scanner import SecretScanner
 from scanner.doc_scanner import DocScanner
 from scanner.terraform_json_scanner import TerraformJSONScanner
+from scanner.network import NetworkScanner
 from agents.file_analyst import FileAnalystAgent
 from agents.graph import GraphAgent
 from risk.assessor import RiskAssessor
@@ -124,7 +125,7 @@ def scan(
         
         for dirpath, dirnames, filenames in os.walk(repo_path):
             # Filter in-place
-            dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in {'.venv', 'node_modules', '.git'}]
+            dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in {'.venv', 'venv', 'env', 'node_modules', '.git', '__pycache__'}]
             
             for f in filenames:
                 file_path = Path(dirpath) / f
@@ -207,6 +208,57 @@ def scan(
     
     console.print(f"[bold green]Scan Complete![/bold green]")
     console.print(f"Reports available in: {output_dir}")
+
+@app.command()
+def net_scan(
+    host: str = typer.Argument(..., help="Host to scan (e.g. google.com)"),
+    port: int = typer.Option(443, help="Port to scan"),
+    run_id: str = typer.Option(None, help="Unique ID for this run."),
+):
+    """
+    Performs a network/TLS scan on the target host to identify PQC vulnerabilities.
+    """
+    if not run_id:
+        run_id = f"net_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+    console.print(Panel(f"Starting Network PQC Scan\nRun ID: {run_id}\nTarget: {host}:{port}", title="LatticeGuard Network"))
+    
+    scanner = NetworkScanner(host, port)
+    with console.status(f"[bold green]Performing TLS Handshake on {host}...") as status:
+        results = scanner.scan()
+    
+    if not results:
+        console.print("[bold red]Scan failed or no results found.[/bold red]")
+        return
+
+    # Display Results
+    from rich.table import Table
+    table = Table(title=f"Findings for {host}")
+    table.add_column("Property", style="cyan")
+    table.add_column("Value", style="white")
+    table.add_column("PQC Status", style="bold")
+
+    for item in results:
+        status_color = "red" if item.is_pqc_vulnerable else "green"
+        status_text = "VULNERABLE" if item.is_pqc_vulnerable else "SECURE"
+        
+        table.add_row("Algorithm", item.algorithm, f"[{status_color}]{status_text}[/{status_color}]")
+        table.add_row("Key Size", str(item.key_size), "")
+        table.add_row("Reasoning", item.description, "")
+
+    console.print(table)
+    
+    # Save to DB if possible
+    db_url = os.getenv("DATABASE_URL", "sqlite:///data/pqc.db")
+    db_path = db_url.replace("sqlite:///", "").replace("sqlite://", "").replace("sqlite:", "")
+    
+    try:
+        from scanner.db import save_inventory_item
+        for item in results:
+            save_inventory_item(db_path, item, run_id)
+        console.print(f"[bold green]✓ Results persisted to {db_path}[/bold green]")
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not save results to DB: {e}[/yellow]")
 
 if __name__ == "__main__":
     app()
