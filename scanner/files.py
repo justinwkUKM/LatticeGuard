@@ -91,7 +91,7 @@ class ArtifactScanner:
                     if match_key:
                         suspects.append(Suspect(
                             path=str(full_path),
-                            line=0,
+                            line=1,
                             content_snippet=f"Found artifact: {SUSPICIOUS_EXTENSIONS[match_key]}",
                             type="artifact",
                             pattern_matched=match_key,

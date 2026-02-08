@@ -409,7 +409,7 @@ def output_sarif(results: List[ScanResult], repo_path: str) -> str:
                         "uriBaseId": "%SRCROOT%"
                     },
                     "region": {
-                        "startLine": r.line
+                        "startLine": max(1, r.line)
                     }
                 }
             }],

@@ -110,7 +110,7 @@ class DependencyScanner:
                 # In lockfiles, finding the exact line is less meaningful but existence is high signal
                 suspects.append(Suspect(
                     path=str(path),
-                    line=0,
+                    line=1,
                     content_snippet=f"Python {'Transitive' if is_lockfile else 'Direct'} Dep: {pkg}",
                     type="artifact",
                     pattern_matched=pkg,

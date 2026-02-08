@@ -84,7 +84,7 @@ class PatternScanner:
                             
                             suspects.append(Suspect(
                                 path=str(file_path),
-                                line=0, # Line counting on chunks is tricky, placeholder for now
+                                line=1, # Line counting on chunks is tricky, placeholder for now
                                 content_snippet=chunk[match.start():match.end()+50],
                                 type="code",
                                 pattern_matched=name,
