@@ -538,11 +538,120 @@ Examples:
     migration_parser.add_argument("path", help="Path to repository to scan")
     migration_parser.add_argument("--format", choices=["table", "json"], default="table", help="Output format")
     
+    # Probe command - TLS/PQC endpoint scanning
+    probe_parser = subparsers.add_parser("probe", help="Probe a TLS endpoint for PQC readiness")
+    probe_parser.add_argument("url", help="URL or hostname to probe (e.g., https://example.com or example.com)")
+    probe_parser.add_argument("--port", type=int, default=443, help="Port to connect to (default: 443)")
+    probe_parser.add_argument("--format", choices=["table", "json"], default="table", help="Output format")
+    probe_parser.add_argument("-o", "--output", help="Output file path")
+    
     args = parser.parse_args()
     
     if not args.command:
         parser.print_help()
         sys.exit(0)
+    
+    # Handle probe command - TLS/PQC endpoint scanning
+    if args.command == "probe":
+        from scanner.network import NetworkScanner
+        import re
+        
+        # Parse URL to extract hostname
+        url = args.url
+        hostname = url
+        
+        # Remove protocol prefix if present
+        if url.startswith("https://"):
+            hostname = url[8:]
+        elif url.startswith("http://"):
+            hostname = url[7:]
+        
+        # Remove path if present
+        hostname = hostname.split("/")[0]
+        
+        # Remove port if present in hostname
+        if ":" in hostname:
+            hostname, _ = hostname.rsplit(":", 1)
+        
+        print(f"🔍 Probing TLS endpoint: {hostname}:{args.port}...", file=sys.stderr)
+        
+        try:
+            scanner = NetworkScanner(hostname, args.port)
+            findings = scanner.scan()
+            score = scanner.calculate_resilience_score()
+            
+            if args.format == "json":
+                output_data = {
+                    "target": f"{hostname}:{args.port}",
+                    "quantum_resilience_score": score,
+                    "pqc_ready": score >= 70,
+                    "status": "PQC-Ready" if score >= 70 else "Partially Ready" if score >= 40 else "Quantum Vulnerable",
+                    "findings": [
+                        {
+                            "name": f.name,
+                            "category": f.category,
+                            "algorithm": f.algorithm,
+                            "key_size": f.key_size,
+                            "is_pqc_vulnerable": f.is_pqc_vulnerable,
+                            "description": f.description,
+                            "remediation": f.remediation
+                        }
+                        for f in findings
+                    ]
+                }
+                output_content = json.dumps(output_data, indent=2)
+            else:
+                lines = [
+                    "",
+                    "=" * 80,
+                    "LatticeGuard TLS/PQC Endpoint Scan",
+                    f"Target: {hostname}:{args.port}",
+                    "=" * 80,
+                    ""
+                ]
+                
+                for f in findings:
+                    severity_icon = "🔴" if f.category == "critical" else "🟠" if f.category == "high" else "🟡" if f.category == "medium" else "🟢"
+                    lines.append(f"{severity_icon} [{f.category.upper()}] {f.name}")
+                    lines.append(f"   Algorithm: {f.algorithm}")
+                    lines.append(f"   Key Size: {f.key_size}")
+                    lines.append(f"   PQC Vulnerable: {f.is_pqc_vulnerable}")
+                    lines.append(f"   Description: {f.description}")
+                    if f.remediation:
+                        lines.append(f"   Remediation: {f.remediation}")
+                    lines.append("")
+                
+                lines.append("=" * 80)
+                lines.append(f"QUANTUM RESILIENCE SCORE: {score}/100")
+                if score >= 70:
+                    lines.append("Status: ✅ PQC-Ready")
+                elif score >= 40:
+                    lines.append("Status: 🟡 Partially Ready")
+                else:
+                    lines.append("Status: 🔴 Quantum Vulnerable")
+                lines.append("=" * 80)
+                lines.append("")
+                
+                output_content = "\n".join(lines)
+            
+            if args.output:
+                with open(args.output, "w") as f:
+                    f.write(output_content)
+                print(f"✅ Report written to {args.output}", file=sys.stderr)
+            else:
+                print(output_content)
+            
+            # Exit with appropriate code based on score
+            if score >= 70:
+                sys.exit(0)  # PQC-Ready
+            elif score >= 40:
+                sys.exit(1)  # Partially Ready (warning)
+            else:
+                sys.exit(2)  # Quantum Vulnerable (failure)
+                
+        except Exception as e:
+            print(f"❌ Error scanning {hostname}:{args.port}: {e}", file=sys.stderr)
+            sys.exit(2)
     
     # Handle discover command
     if args.command == "discover":

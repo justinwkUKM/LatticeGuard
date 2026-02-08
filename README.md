@@ -407,6 +407,49 @@ python3 cli/cicd_scanner.py agility --vulnerable-only
 
 ---
 
+### `probe` - TLS/PQC Endpoint Scanning
+
+Probe a live TLS endpoint to assess its quantum resilience and PQC readiness.
+
+```bash
+python3 cli/cicd_scanner.py probe <url> [options]
+```
+
+| Flag | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `url` | required | - | URL or hostname to probe (e.g., `https://example.com` or `example.com`) |
+| `--port` | int | `443` | Port to connect to |
+| `--format` | `table\|json` | `table` | Output format |
+| `-o, --output` | string | stdout | Output file path |
+
+**Examples:**
+```bash
+# Scan Bank Negara Malaysia
+python3 cli/cicd_scanner.py probe https://www.bnm.gov.my/
+
+# Scan with JSON output
+python3 cli/cicd_scanner.py probe paynet.my --format json
+
+# Scan non-standard port
+python3 cli/cicd_scanner.py probe internal.example.com --port 8443
+
+# Save report to file
+python3 cli/cicd_scanner.py probe example.com -o tls_report.txt
+```
+
+**Output Fields:**
+- `algorithm`: TLS cipher suite in use
+- `quantum_resilience_score`: 0-100 score (70+ = PQC-Ready)
+- `pqc_vulnerable`: Whether key exchange is quantum vulnerable
+- `remediation`: Recommended actions for PQC migration
+
+**Exit Codes:**
+- `0` = PQC-Ready (score ≥ 70)
+- `1` = Partially Ready (score 40-69)
+- `2` = Quantum Vulnerable (score < 40)
+
+---
+
 ### REST API
 
 Automate scans into your CI/CD pipelines:
