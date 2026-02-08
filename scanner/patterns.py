@@ -1,3 +1,4 @@
+import os
 import subprocess
 import json
 from typing import List
@@ -101,10 +102,19 @@ class PatternScanner:
         return suspects
 
     def scan(self) -> List[Suspect]:
-        # Legacy rg-based scan for whole repo (CLI usage)
+        """Scan the entire repository for patterns."""
         suspects = []
-        # ... (keep existing rg logic or deprecate, for now keeping for CLI compatibility if needed, 
-        # but worker will use scan_file)
+        repo = Path(self.repo_path)
+        exclude_dirs = {'.git', 'node_modules', 'venv', 'env', 'dist', 'build', '__pycache__', '.next'}
+        
+        for dirpath, dirnames, filenames in os.walk(repo):
+            dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in exclude_dirs]
+            
+            for f in filenames:
+                file_path = Path(dirpath) / f
+                # Scan all text-based files or suspicious files
+                if f.endswith(('.py', '.java', '.cpp', '.cc', '.h', '.hpp', '.rs', '.cs', '.go', '.ts', '.js', '.yaml', '.yml', '.env', '.log', '.txt', '.sql')):
+                    suspects.extend(self.scan_file(file_path))
         return suspects
 
 if __name__ == "__main__":

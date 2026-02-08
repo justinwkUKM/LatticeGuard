@@ -20,6 +20,8 @@ class DependencyScanner:
             # Go
             "crypto/rsa": "Standard Go RSA implementation. Vulnerable to Shor's.",
             "crypto/ecdsa": "Standard Go ECDSA implementation. Vulnerable to Shor's.",
+            "golang.org/x/crypto": "Go crypto extension. Often contains PQC-vulnerable curves.",
+            "jwt-go": "Legacy JWT library. Prone to weak algorithm usage.",
             # Rust
             "rsa": "Pure Rust RSA implementation. Vulnerable to Shor's.",
             "ed25519-dalek": "Standard Ed25519 (ECC). Vulnerable to Shor's.",

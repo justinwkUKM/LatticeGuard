@@ -40,6 +40,8 @@ from scanner.dependencies import DependencyScanner
 from scanner.db import save_suspects, init_db, save_inventory_item
 from scanner.suppression import SuppressionManager
 from scanner.cloud_discovery import CloudDiscoveryManager
+from scanner.treesitter_scanner import TreeSitterScanner
+from scanner.kubernetes import KubernetesScanner
 from schemas.models import InventoryItem
 
 
@@ -167,6 +169,8 @@ def scan_repository(
     artifact_scanner = ArtifactScanner(str(repo))
     pattern_scanner = PatternScanner(str(repo))
     dep_scanner = DependencyScanner(str(repo))
+    ts_scanner = TreeSitterScanner()
+    k8s_scanner = KubernetesScanner(str(repo))
     
     # Run scans
     print(f"🔍 Scanning {repo_path} (Run ID: {run_id})...", file=sys.stderr)
@@ -248,6 +252,74 @@ def scan_repository(
             remediation=scan_res.pqc_recommendation
         )
         save_inventory_item(db_path, inventory_item, run_id)
+    
+    # AST-Based Tree-Sitter Scan
+    print(f"🌳 Running AST analysis for Java, C++, Rust, and C#...", file=sys.stderr)
+    for dirpath, dirnames, filenames in os.walk(repo):
+        # Skip hidden and excluded dirs
+        dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in ["node_modules", "venv", "env", "dist", "build"]]
+        for f in filenames:
+            file_path = Path(dirpath) / f
+            if file_path.suffix in [".java", ".cpp", ".cc", ".cxx", ".rs", ".cs", ".h", ".hpp"]:
+                ts_suspects = ts_scanner.scan_file(file_path)
+                for suspect in ts_suspects:
+                    algo = suspect.pattern_matched
+                    hndl = calculate_hndl_score(algo, longevity_years, sensitivity)
+                    severity = severity_from_hndl(hndl)
+                    
+                    scan_res = ScanResult(
+                        path=suspect.path,
+                        line=suspect.line,
+                        rule_id=f"AST-{algo.upper().replace(' ', '-')[:20]}",
+                        message=f"AST detected PQC vulnerability: {algo}",
+                        severity=severity,
+                        algorithm=algo,
+                        pqc_recommendation="Migrate to PQC-compliant libraries (e.g., ring, BouncyCastle PQC)",
+                        hndl_score=hndl,
+                        run_id=run_id
+                    )
+                    results.append(scan_res)
+                    
+                    # Sync to inventory
+                    inventory_item = InventoryItem(
+                        id=f"{run_id}:{suspect.path}:{suspect.line}",
+                        path=suspect.path,
+                        line=suspect.line,
+                        name=f"Code Asset ({algo})",
+                        category="code",
+                        algorithm=algo,
+                        is_pqc_vulnerable=True,
+                        description=scan_res.message,
+                        hndl_score=hndl,
+                        risk_level=severity,
+                        remediation=scan_res.pqc_recommendation
+                    )
+                    save_inventory_item(db_path, inventory_item, run_id)
+
+    # Infrastructure (K8s) Scan
+    print(f"☸️  Scanning Kubernetes manifests...", file=sys.stderr)
+    k8s_suspects = k8s_scanner.scan()
+    for suspect in k8s_suspects:
+        algo = suspect.pattern_matched
+        hndl = calculate_hndl_score(algo, longevity_years, sensitivity)
+        severity = severity_from_hndl(hndl)
+        
+        scan_res = ScanResult(
+            path=suspect.path,
+            line=suspect.line,
+            rule_id=f"INFRA-{algo.upper().replace(' ', '-')[:20]}",
+            message=f"Infra PQC vulnerability: {suspect.content_snippet}",
+            severity=severity,
+            algorithm=algo,
+            pqc_recommendation="Update TLS config to PQC-ready groups",
+            hndl_score=hndl,
+            run_id=run_id
+        )
+        results.append(scan_res)
+    
+    # Also sync K8s findings to inventory
+    for item in k8s_scanner.get_inventory():
+        save_inventory_item(db_path, item, run_id)
     
     return results, run_id
 

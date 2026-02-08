@@ -47,6 +47,7 @@ SUSPICIOUS_EXTENSIONS = {
     ".yml": "Kubernetes/Helm Config",
     
     # Data & Config
+    ".log": "System/Audit Log",
     ".sql": "SQL Database Dump",
     ".env": "Environment Config",
     ".json": "JSON Config/Data",

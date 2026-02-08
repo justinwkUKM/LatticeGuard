@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shipping-ingress
+  annotations:
+    # VULNERABILITY: Forcing weak TLS 1.0
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1 TLSv1.1"
+    # VULNERABILITY: Using weak cipher suites
+    nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-RSA-AES128-SHA:AES128-SHA"
+spec:
+  tls:
+  - hosts:
+    - api.shipping.com
+    secretName: shipping-tls-secret
+  rules:
+  - host: api.shipping.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: shipping-service
+            port:
+              number: 80
