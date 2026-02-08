@@ -28,30 +28,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: '3.11'
-      
-      - name: Install dependencies
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install Dependencies
         run: |
-          pip install pydantic redis
-      
-      - name: Clone LatticeGuard
-        run: |
-          git clone https://github.com/latticeguard/pqc-assessment.git /tmp/latticeguard
-      
+          uv pip install -e .
+          uv pip install litellm tree-sitter tree-sitter-java tree-sitter-cpp tree-sitter-rust tree-sitter-c-sharp
+
       - name: Run PQC Scan
         id: scan
         continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          cd /tmp/latticeguard
-          python cli/cicd_scanner.py scan ${{ github.workspace }} \
+          uv run python cli/cicd_scanner.py scan ./ \
             --fail-on high \
             --longevity 5 \
             --sensitivity internal \
             --format sarif \
-            -o ${{ github.workspace }}/latticeguard-results.sarif
+            -o latticeguard-results.sarif
           
           echo "exit_code=$?" >> $GITHUB_OUTPUT
       
