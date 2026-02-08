@@ -14,7 +14,7 @@ resource "aws_lb_listener" "legacy_listener" {
 }
 
 resource "google_kms_crypto_key" "vulnerable_key" {
-  name     = "vulnerable-key"
+  name     = "vul-key"
   key_ring = google_kms_key_ring.keyring.id
   
   # VULNERABILITY: RSA algorithm in Cloud KMS

@@ -47,6 +47,11 @@ class ScanPlanner:
                     self.scanners_to_run["infra"] = True
                     self.tech_stack.append("Infrastructure-as-Code")
                 
+                if ext in [".conf", ".nginx"]:
+                     if not self.scanners_to_run["infra"]: # We map this to infra for now to reflect "ops" code
+                         self.scanners_to_run["infra"] = True # Though K8s scanner might not pick it up, Pattern scanner will.
+                     self.tech_stack.append("Web Server Config")
+                
                 # Check for Binaries
                 if ext in [".so", ".dll", ".exe", ".bin", ".dylib"]:
                     if not self.scanners_to_run["binary"]:

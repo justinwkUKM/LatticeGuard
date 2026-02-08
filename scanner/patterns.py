@@ -30,6 +30,10 @@ CRYPTO_PATTERNS = {
     "AWS_Key": r'(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}',
     "Generic_Token": r'(?i)(api_key|access_token|secret)\s*[:=]\s*[\'"][a-zA-Z0-9_\-]{32,}[\'"]',
     "SQL_Key_Insert": r'(?i)INSERT\s+INTO.*VALUES.*\s*[\'"](ssh-rsa|BEGIN\s+PRIVATE\s+KEY)',
+    
+    # Nginx / Web Server
+    "Nginx_Legacy_Protocol": r'ssl_protocols\s+.*?(SSLv2|SSLv3|TLSv1(?!\.)|TLSv1\.0|TLSv1\.1)',
+    "Nginx_Weak_Cipher": r'ssl_ciphers\s+.*?(DES|RC4|MD5|SHA1|AES128-SHA|AES256-SHA)',
 }
 
 class PatternScanner:
@@ -47,6 +51,7 @@ class PatternScanner:
             
             with open(file_path, 'r', errors='ignore') as f:
                 offset = 0
+                offset_lines = 0  # Track global line offset
                 while True:
                     # To handle overlap correctly, we need to seek back by 'overlap' bytes
                     # except for the first chunk.
@@ -78,18 +83,16 @@ class PatternScanner:
                             line_num = content_pre_count = 0
                             # To be efficient on line counting, we'd need more logic. 
                             # Let's settle for a simplified approximation or full count if small.
+                            # Simple line counting for small files
                             if file_size < 10 * 1024 * 1024:
-                                # For smallish files, we can just do a full scan for line numbers.
-                                # But let's stay robust:
-                                pass # We'll compute it below
-                            
-                            # Real line counting (can be expensive on HUGE files)
-                            # Alternative: line_num = -1 if file_size > threshold
-                            # Let's count within the chunk relative to start if possible.
+                                content_pre_count = chunk.count('\n', 0, match.start())
+                                line_num = offset_lines + content_pre_count + 1
+                            else:
+                                line_num = 1
                             
                             suspects.append(Suspect(
                                 path=str(file_path),
-                                line=1, # Line counting on chunks is tricky, placeholder for now
+                                line=line_num,
                                 content_snippet=chunk[match.start():match.end()+50],
                                 type="code",
                                 pattern_matched=name,
@@ -99,6 +102,16 @@ class PatternScanner:
                     if len(chunk) < (chunk_size + (overlap if offset > 0 else 0)):
                         break
                     
+                    # Update line count for next chunk
+                    # This is approximate if we have overlaps, but good enough for static analysis
+                    # Ideally we count only the non-overlapped part
+                    non_overlapped_len = chunk_size
+                    if offset == 0:
+                        non_overlapped_chunk = chunk[:chunk_size]
+                    else:
+                        non_overlapped_chunk = chunk[overlap:overlap+chunk_size]
+                        
+                    offset_lines += non_overlapped_chunk.count('\n')
                     offset += chunk_size
 
         except Exception as e:
@@ -118,7 +131,7 @@ class PatternScanner:
             for f in filenames:
                 file_path = Path(dirpath) / f
                 # Scan all text-based files or suspicious files
-                if f.endswith(('.py', '.java', '.cpp', '.cc', '.h', '.hpp', '.rs', '.cs', '.go', '.ts', '.js', '.yaml', '.yml', '.env', '.log', '.txt', '.sql', '.tf', '.tfstate')):
+                if f.endswith(('.py', '.java', '.cpp', '.cc', '.h', '.hpp', '.rs', '.cs', '.go', '.ts', '.js', '.yaml', '.yml', '.env', '.log', '.txt', '.sql', '.tf', '.tfstate', '.conf', '.nginx')):
                     suspects.extend(self.scan_file(file_path))
         return suspects
 

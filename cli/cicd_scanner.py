@@ -98,18 +98,22 @@ def calculate_hndl_score(
     algo_upper = algorithm.upper() if algorithm else ""
     if any(tag in algo_upper for tag in ["KYBER", "DILITHIUM", "ML-KEM", "ML-DSA"]):
         algo_risk = 1  # Quantum-safe
-    elif "RSA-1024" in algo_upper or "DES" in algo_upper:
-        algo_risk = 10  # Critical
-    elif "RSA-2048" in algo_upper:
-        algo_risk = 8
+    elif "RSA-1024" in algo_upper or "DES" in algo_upper or "WEAK_HASH" in algo_upper or "MD5" in algo_upper or "SHA1" in algo_upper:
+        algo_risk = 10  # Critical (Broken/Legacy)
+    elif "RSA-2048" in algo_upper or "RSA_KEY" in algo_upper:
+        algo_risk = 8   # High (Legacy Asymmetric)
     elif "RSA-4096" in algo_upper:
         algo_risk = 6
-    elif any(tag in algo_upper for tag in ["ECDSA", "ECDHE", "ED25519", "P-256", "P-384"]):
-        algo_risk = 7
+    elif any(tag in algo_upper for tag in ["ECDSA", "ECDHE", "ED25519", "P-256", "P-384", "EC_KEY"]):
+        algo_risk = 7   # High (ECC is vulnerable to Shor)
     elif "AES" in algo_upper:
         algo_risk = 3  # Symmetric is more resistant
     else:
-        algo_risk = 5  # Default unknown
+        # Check if it's a generic "Secret" or "Key" which might be high impact
+        if "KEY" in algo_upper or "SECRET" in algo_upper:
+             algo_risk = 6 # Medium-High default for keys
+        else:
+             algo_risk = 5  # Default unknown
     
     # Sensitivity factors
     sensitivity_map = {
@@ -400,29 +404,32 @@ def scan_repository(
     return results, run_id
 
 
-def output_table(results: List[ScanResult], summary: ScanSummary):
+def output_table(results: List[ScanResult], summary: ScanSummary) -> str:
     """Output results as a formatted table"""
-    print("\n" + "=" * 80)
-    print("LatticeGuard PQC Assessment Report")
-    print("=" * 80)
+    lines = []
+    lines.append("\n" + "=" * 80)
+    lines.append("LatticeGuard PQC Assessment Report")
+    lines.append("=" * 80)
     
     if not results:
-        print("\n✅ No PQC vulnerabilities found!")
+        lines.append("\n✅ No PQC vulnerabilities found!")
     else:
-        print(f"\n{'SEVERITY':<10} {'FILE':<40} {'LINE':<6} {'RULE':<20}")
-        print("-" * 80)
+        lines.append(f"\n{'SEVERITY':<10} {'FILE':<40} {'LINE':<6} {'RULE':<20}")
+        lines.append("-" * 80)
         
         for r in sorted(results, key=lambda x: SEVERITY_ORDER.get(x.severity, 0), reverse=True):
             sev_icon = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢"}.get(r.severity, "⚪")
             path_short = r.path[-38:] if len(r.path) > 40 else r.path
-            print(f"{sev_icon} {r.severity:<8} {path_short:<40} {r.line:<6} {r.rule_id:<20}")
+            lines.append(f"{sev_icon} {r.severity:<8} {path_short:<40} {r.line:<6} {r.rule_id:<20}")
     
-    print("\n" + "-" * 80)
-    print(f"Summary: {summary.total_findings} findings in {summary.total_files} files")
-    print(f"  Critical: {summary.critical} | High: {summary.high} | Medium: {summary.medium} | Low: {summary.low}")
-    print(f"  Status: {'PASSED ✅' if summary.passed else 'FAILED ❌'}")
-    print(f"  Exit Code: {summary.exit_code}")
-    print("=" * 80 + "\n")
+    lines.append("\n" + "-" * 80)
+    lines.append(f"Summary: {summary.total_findings} findings in {summary.total_files} files")
+    lines.append(f"  Critical: {summary.critical} | High: {summary.high} | Medium: {summary.medium} | Low: {summary.low}")
+    lines.append(f"  Status: {'PASSED ✅' if summary.passed else 'FAILED ❌'}")
+    lines.append(f"  Exit Code: {summary.exit_code}")
+    lines.append("=" * 80 + "\n")
+    
+    return "\n".join(lines)
 
 
 def output_json(results: List[ScanResult], summary: ScanSummary) -> str:
@@ -1405,8 +1412,7 @@ Examples:
     
     # Generate output
     if args.format == "table":
-        output_table(results, summary)
-        output_content = None
+        output_content = output_table(results, summary)
     elif args.format == "json":
         output_content = output_json(results, summary)
     elif args.format == "sarif":
