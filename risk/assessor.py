@@ -9,6 +9,95 @@ from typing import List, Dict
 from pathlib import Path
 from schemas.models import RiskAssessment, InventoryItem
 from agents.remediation import RemediationAgent
+from risk.blast_radius import BlastRadiusAnalyzer
+from risk.migration_estimator import MigrationEstimator
+from risk.compliance import ComplianceMapper
+
+
+# Temporal Risk Scoring Constants
+CRQC_ESTIMATE_YEAR = 2028  # Estimated year for Cryptographically Relevant Quantum Computer
+CRQC_UNCERTAINTY_YEARS = 3  # ±3 years uncertainty window
+
+# Algorithm-specific threat timelines (years until critical)
+ALGORITHM_THREAT_TIMELINE = {
+    "RSA-1024": 0,    # Already weak, immediate risk
+    "RSA-2048": 5,    # Moderate buffer
+    "RSA-3072": 8,    # Better margin
+    "RSA-4096": 10,   # Longer runway
+    "ECDSA-256": 5,   # Similar to RSA-2048
+    "ECDSA-384": 7,
+    "ECDSA-521": 8,
+    "DH-2048": 5,
+    "DSA": 0,         # Deprecated
+    "MD5": 0,         # Already broken
+    "SHA1": 0,        # Deprecated for signatures
+}
+
+
+def calculate_temporal_risk(algorithm: str, data_retention_years: int = 7) -> dict:
+    """
+    Calculate temporal risk based on algorithm and data retention requirements.
+    
+    Args:
+        algorithm: The cryptographic algorithm in use
+        data_retention_years: How long the data must be protected
+    
+    Returns:
+        Temporal risk assessment with CRQC timeline
+    """
+    current_year = 2026
+    crqc_earliest = CRQC_ESTIMATE_YEAR - CRQC_UNCERTAINTY_YEARS
+    crqc_latest = CRQC_ESTIMATE_YEAR + CRQC_UNCERTAINTY_YEARS
+    
+    # Calculate years until data expires
+    data_expiry_year = current_year + data_retention_years
+    
+    # Check if data will still be sensitive when CRQC arrives
+    years_at_risk = max(0, data_expiry_year - crqc_earliest)
+    
+    # Determine algorithm-specific threat adjustment
+    algo_upper = algorithm.upper() if algorithm else ""
+    algo_buffer = 5  # Default buffer
+    for pattern, buffer in ALGORITHM_THREAT_TIMELINE.items():
+        if pattern in algo_upper:
+            algo_buffer = buffer
+            break
+    
+    # Calculate urgency
+    effective_years_to_act = crqc_earliest - current_year - (data_retention_years - algo_buffer)
+    
+    if effective_years_to_act <= 0:
+        urgency = "critical"
+    elif effective_years_to_act <= 2:
+        urgency = "high"
+    elif effective_years_to_act <= 5:
+        urgency = "medium"
+    else:
+        urgency = "low"
+    
+    return {
+        "crqc_eta": f"{CRQC_ESTIMATE_YEAR} (±{CRQC_UNCERTAINTY_YEARS} years)",
+        "crqc_earliest": crqc_earliest,
+        "crqc_latest": crqc_latest,
+        "data_expiry_year": data_expiry_year,
+        "data_exposure_window_years": years_at_risk,
+        "years_to_act": max(0, effective_years_to_act),
+        "urgency": urgency,
+        "recommendation": _get_temporal_recommendation(urgency, years_at_risk)
+    }
+
+
+def _get_temporal_recommendation(urgency: str, years_at_risk: int) -> str:
+    """Get action recommendation based on urgency."""
+    if urgency == "critical":
+        return "Immediate migration required. Data will be at risk before CRQC arrival."
+    elif urgency == "high":
+        return "Begin migration planning now. Limited runway before data exposure."
+    elif urgency == "medium":
+        return "Schedule migration in next planning cycle. Monitor CRQC developments."
+    else:
+        return "Low priority. Continue monitoring quantum computing advances."
+
 
 class RiskAssessor:
     def __init__(self, db_path: str):

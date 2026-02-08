@@ -509,6 +509,35 @@ Examples:
     discover_parser.add_argument("--region", help="Cloud region to scan")
     discover_parser.add_argument("--format", choices=["table", "json"], default="table", help="Output format")
     
+    # CBOM command - Cryptographic Bill of Materials
+    cbom_parser = subparsers.add_parser("cbom", help="Generate Cryptographic Bill of Materials (CycloneDX format)")
+    cbom_parser.add_argument("path", help="Path to repository to scan")
+    cbom_parser.add_argument("-o", "--output", help="Output file (default: stdout)")
+    cbom_parser.add_argument("--format", choices=["json", "cyclonedx"], default="cyclonedx", help="Output format")
+    
+    # Blast Radius command
+    blast_parser = subparsers.add_parser("blast-radius", help="Analyze blast radius of algorithm compromise")
+    blast_parser.add_argument("path", help="Path to repository to scan")
+    blast_parser.add_argument("--format", choices=["table", "json"], default="table", help="Output format")
+    
+    # Compliance command
+    compliance_parser = subparsers.add_parser("compliance", help="Generate compliance mapping report")
+    compliance_parser.add_argument("path", help="Path to repository to scan")
+    compliance_parser.add_argument("--framework", choices=["all", "bnm-rmit", "pci-dss", "nist"], default="all", help="Compliance framework")
+    compliance_parser.add_argument("--format", choices=["table", "json"], default="table", help="Output format")
+    compliance_parser.add_argument("-o", "--output", help="Output file for audit report")
+    
+    # Temporal Risk command
+    temporal_parser = subparsers.add_parser("temporal-risk", help="Calculate time-to-CRQC risk assessment")
+    temporal_parser.add_argument("path", help="Path to repository to scan")
+    temporal_parser.add_argument("--retention", type=int, default=7, help="Data retention period in years (default: 7)")
+    temporal_parser.add_argument("--format", choices=["table", "json"], default="table", help="Output format")
+    
+    # Migration Effort command
+    migration_parser = subparsers.add_parser("migration-effort", help="Estimate PQC migration complexity and effort")
+    migration_parser.add_argument("path", help="Path to repository to scan")
+    migration_parser.add_argument("--format", choices=["table", "json"], default="table", help="Output format")
+    
     args = parser.parse_args()
     
     if not args.command:
@@ -668,6 +697,189 @@ Examples:
         except Exception as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
+        sys.exit(0)
+    
+    # Handle CBOM command
+    if args.command == "cbom":
+        from schemas.cbom import CBOM, CBOMMetadata, generate_cbom_from_findings
+        
+        print(f"📜 Generating CBOM for {args.path}...", file=sys.stderr)
+        results, run_id = scan_repository(args.path)
+        
+        findings = [{"path": r.path, "algorithm": r.algorithm, "rule_id": r.rule_id, 
+                     "is_pqc": r.severity in ["critical", "high"]} for r in results]
+        
+        cbom = generate_cbom_from_findings(run_id, args.path, findings)
+        
+        if args.format == "cyclonedx":
+            output_content = json.dumps(cbom.to_cyclonedx(), indent=2)
+        else:
+            output_content = json.dumps(cbom.model_dump(), indent=2)
+        
+        if args.output:
+            with open(args.output, "w") as f:
+                f.write(output_content)
+            print(f"✅ CBOM written to {args.output}", file=sys.stderr)
+        else:
+            print(output_content)
+        
+        sys.exit(0)
+    
+    # Handle Blast Radius command
+    if args.command == "blast-radius":
+        from risk.blast_radius import BlastRadiusAnalyzer
+        
+        print(f"💥 Analyzing blast radius for {args.path}...", file=sys.stderr)
+        results, run_id = scan_repository(args.path)
+        
+        analyzer = BlastRadiusAnalyzer()
+        for r in results:
+            analyzer.add_finding(r.algorithm or "Unknown", r.path, r.line, r.message, r.severity)
+        
+        report = analyzer.analyze()
+        
+        if args.format == "json":
+            print(json.dumps(report.to_dict(), indent=2))
+        else:
+            print(analyzer.format_summary(report))
+        
+        sys.exit(0)
+    
+    # Handle Compliance command
+    if args.command == "compliance":
+        from risk.compliance import ComplianceMapper
+        
+        print(f"📋 Generating compliance report for {args.path}...", file=sys.stderr)
+        results, run_id = scan_repository(args.path)
+        
+        mapper = ComplianceMapper()
+        findings = [{"rule_id": r.rule_id, "algorithm": r.algorithm, "path": r.path} for r in results]
+        audit_report = mapper.generate_audit_report(findings)
+        
+        if args.format == "json":
+            output_content = json.dumps(audit_report, indent=2)
+        else:
+            print("\n" + "=" * 80)
+            print("COMPLIANCE AUDIT REPORT")
+            print("=" * 80)
+            print(f"Generated: {audit_report['generated_at']}")
+            print(f"Total Findings: {audit_report['total_findings']}")
+            print(f"Frameworks Affected: {', '.join(audit_report['frameworks_affected'])}")
+            print(f"Requirements Violated: {audit_report['requirements_violated']}")
+            print("-" * 80)
+            
+            for framework, items in audit_report['by_framework'].items():
+                print(f"\n📋 {framework}")
+                for item in items[:5]:  # Show top 5 per framework
+                    print(f"   [{item['requirement_id']}] {item['title']}")
+                    print(f"      File: {item['file']}")
+                if len(items) > 5:
+                    print(f"   ... and {len(items) - 5} more")
+            
+            print("=" * 80 + "\n")
+            output_content = None
+        
+        if output_content:
+            if args.output:
+                with open(args.output, "w") as f:
+                    f.write(output_content)
+                print(f"✅ Report written to {args.output}", file=sys.stderr)
+            else:
+                print(output_content)
+        
+        sys.exit(0)
+    
+    # Handle Temporal Risk command
+    if args.command == "temporal-risk":
+        from risk.assessor import calculate_temporal_risk, CRQC_ESTIMATE_YEAR, CRQC_UNCERTAINTY_YEARS
+        
+        print(f"⏰ Calculating temporal risk for {args.path}...", file=sys.stderr)
+        results, run_id = scan_repository(args.path)
+        
+        temporal_results = []
+        for r in results:
+            if r.severity in ["critical", "high"]:
+                tr = calculate_temporal_risk(r.algorithm or "", args.retention)
+                temporal_results.append({
+                    "path": r.path,
+                    "algorithm": r.algorithm,
+                    "temporal_risk": tr
+                })
+        
+        if args.format == "json":
+            print(json.dumps(temporal_results, indent=2))
+        else:
+            print("\n" + "=" * 80)
+            print("TEMPORAL RISK ASSESSMENT (Time-to-CRQC)")
+            print("=" * 80)
+            print(f"CRQC Estimate: {CRQC_ESTIMATE_YEAR} (±{CRQC_UNCERTAINTY_YEARS} years)")
+            print(f"Data Retention: {args.retention} years")
+            print("-" * 80)
+            
+            for tr in temporal_results:
+                urgency = tr['temporal_risk']['urgency'].upper()
+                icon = "🔴" if urgency == "CRITICAL" else "🟠" if urgency == "HIGH" else "🟡" if urgency == "MEDIUM" else "🟢"
+                print(f"\n{icon} {tr['algorithm']} - {urgency}")
+                print(f"   File: {tr['path']}")
+                print(f"   Years to Act: {tr['temporal_risk']['years_to_act']}")
+                print(f"   Exposure Window: {tr['temporal_risk']['data_exposure_window_years']} years")
+                print(f"   Recommendation: {tr['temporal_risk']['recommendation']}")
+            
+            print("=" * 80 + "\n")
+        
+        sys.exit(0)
+    
+    # Handle Migration Effort command
+    if args.command == "migration-effort":
+        from risk.migration_estimator import MigrationEstimator
+        
+        print(f"📊 Estimating migration effort for {args.path}...", file=sys.stderr)
+        results, run_id = scan_repository(args.path)
+        
+        estimator = MigrationEstimator()
+        findings = [{"rule_id": r.rule_id} for r in results]
+        total_effort = estimator.total_effort(findings)
+        
+        estimates = []
+        for r in results:
+            est = estimator.estimate(r.rule_id, r.algorithm)
+            estimates.append({
+                "path": r.path,
+                "rule_id": r.rule_id,
+                "complexity": est.complexity.value,
+                "hours": est.estimated_hours,
+                "action": est.recommended_action,
+                "pqc_alternative": est.pqc_alternative
+            })
+        
+        if args.format == "json":
+            print(json.dumps({"total": total_effort, "estimates": estimates}, indent=2))
+        else:
+            print("\n" + "=" * 80)
+            print("PQC MIGRATION EFFORT ESTIMATE")
+            print("=" * 80)
+            print(f"Total Findings: {total_effort['finding_count']}")
+            print(f"Estimated Hours: {total_effort['total_hours']:.1f}")
+            print(f"Developer Days: {total_effort['total_developer_days']}")
+            print("-" * 80)
+            print("By Complexity:")
+            for complexity, count in total_effort['by_complexity'].items():
+                if count > 0:
+                    print(f"   {complexity.upper()}: {count} items")
+            print("-" * 80)
+            
+            for est in estimates[:10]:  # Show top 10
+                print(f"\n[{est['complexity'].upper()}] {est['rule_id']} - {est['hours']}h")
+                print(f"   File: {est['path']}")
+                print(f"   Action: {est['action']}")
+                if est['pqc_alternative']:
+                    print(f"   PQC: {est['pqc_alternative']}")
+            
+            if len(estimates) > 10:
+                print(f"\n... and {len(estimates) - 10} more items")
+            
+            print("=" * 80 + "\n")
+        
         sys.exit(0)
     
     # Handle scan command
