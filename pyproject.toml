@@ -26,6 +26,9 @@ dependencies = [
     "tree-sitter>=0.21.0",
     "tree-sitter-java>=0.21.0",
     "tree-sitter-cpp>=0.22.0",
+    "tree-sitter-rust>=0.23.0",
+    "tree-sitter-c-sharp>=0.23.0",
+    "litellm>=1.0.0",
     # Phase 4: K8s manifest parsing
     "pyyaml>=6.0",
     # Phase 4: PDF reports
@@ -35,7 +38,8 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "pytest",
-    "pytest-asyncio"
+    "pytest-asyncio",
+    "pytest-mock"
 ]
 
 [tool.setuptools.packages.find]
