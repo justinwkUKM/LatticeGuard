@@ -171,18 +171,30 @@ def scan_repository(
     # Initialize suppression manager
     suppressor = SuppressionManager(config_path or ".latticeguard.yaml")
     
-    # Initialize scanners
+    # Smart Orchestration: Fingerprint Repository
+    from scanner.planner import ScanPlanner
+    scan_planner = ScanPlanner(str(repo))
+    scan_plan = scan_planner.plan()
+    
+    scanners_to_run = scan_plan.get("scanners", {})
+    tech_stack = scan_plan.get("stack", [])
+    
+    print(f"🧠 Smart Scan Active: Detected {', '.join(tech_stack)}", file=sys.stderr)
+    
+    # Initialize scanners based on plan
     artifact_scanner = ArtifactScanner(str(repo))
     pattern_scanner = PatternScanner(str(repo))
-    dep_scanner = DependencyScanner(str(repo))
-    ts_scanner = TreeSitterScanner()
-    k8s_scanner = KubernetesScanner(str(repo))
-    binary_scanner = BinaryAuditScanner()
+    
+    # Conditional Scanners
+    dep_scanner = DependencyScanner(str(repo)) if scanners_to_run.get("sca") else None
+    ts_scanner = TreeSitterScanner() if scanners_to_run.get("sast") else None
+    k8s_scanner = KubernetesScanner(str(repo)) if scanners_to_run.get("infra") else None
+    binary_scanner = BinaryAuditScanner() if scanners_to_run.get("binary") else None
     
     # Run scans
     print(f"🔍 Scanning {repo_path} (Run ID: {run_id})...", file=sys.stderr)
     
-    # Pattern scan
+    # Pattern scan (Always Run)
     suspects = pattern_scanner.scan()
     for suspect in suspects:
         if suppressor.should_suppress(suspect):
@@ -222,7 +234,9 @@ def scan_repository(
         save_inventory_item(db_path, inventory_item, run_id)
     
     # Dependency scan
-    dep_suspects = dep_scanner.scan()
+    dep_suspects = []
+    if dep_scanner:
+        dep_suspects = dep_scanner.scan()
     for dep in dep_suspects:
         if suppressor.should_suppress(dep):
             continue
@@ -261,31 +275,32 @@ def scan_repository(
         save_inventory_item(db_path, inventory_item, run_id)
     
     # AST-Based Tree-Sitter Scan
-    print(f"🌳 Running AST analysis for Java, C++, Rust, and C#...", file=sys.stderr)
-    for dirpath, dirnames, filenames in os.walk(repo):
-        # Skip hidden and excluded dirs
-        dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in ["node_modules", "venv", "env", "dist", "build"]]
-        for f in filenames:
-            file_path = Path(dirpath) / f
-            if file_path.suffix in [".java", ".cpp", ".cc", ".cxx", ".rs", ".cs", ".h", ".hpp"]:
-                ts_suspects = ts_scanner.scan_file(file_path)
-                for suspect in ts_suspects:
-                    algo = suspect.pattern_matched
-                    hndl = calculate_hndl_score(algo, longevity_years, sensitivity)
-                    severity = severity_from_hndl(hndl)
-                    
-                    scan_res = ScanResult(
-                        path=suspect.path,
-                        line=suspect.line,
-                        rule_id=f"AST-{algo.upper().replace(' ', '-')[:20]}",
-                        message=f"AST detected PQC vulnerability: {algo}",
-                        severity=severity,
-                        algorithm=algo,
-                        pqc_recommendation="Migrate to PQC-compliant libraries (e.g., ring, BouncyCastle PQC)",
-                        hndl_score=hndl,
-                        run_id=run_id
-                    )
-                    results.append(scan_res)
+    if ts_scanner:
+        print(f"🌳 Running AST analysis for {', '.join(tech_stack) if tech_stack else 'all supported languages'}...", file=sys.stderr)
+        for dirpath, dirnames, filenames in os.walk(repo):
+            # Skip hidden and excluded dirs
+            dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in ["node_modules", "venv", "env", "dist", "build"]]
+            for f in filenames:
+                file_path = Path(dirpath) / f
+                if file_path.suffix in [".java", ".cpp", ".cc", ".cxx", ".rs", ".cs", ".h", ".hpp"]:
+                    ts_suspects = ts_scanner.scan_file(file_path)
+                    for suspect in ts_suspects:
+                        algo = suspect.pattern_matched
+                        hndl = calculate_hndl_score(algo, longevity_years, sensitivity)
+                        severity = severity_from_hndl(hndl)
+                        
+                        scan_res = ScanResult(
+                            path=suspect.path,
+                            line=suspect.line,
+                            rule_id=f"AST-{algo.upper().replace(' ', '-')[:20]}",
+                            message=f"AST detected PQC vulnerability: {algo}",
+                            severity=severity,
+                            algorithm=algo,
+                            pqc_recommendation=getattr(suspect, 'remediation', "Migrate to PQC-compliant libraries"),
+                            hndl_score=hndl,
+                            run_id=run_id
+                        )
+                        results.append(scan_res)
                     
                     # Sync to inventory
                     inventory_item = InventoryItem(
@@ -304,49 +319,83 @@ def scan_repository(
                     save_inventory_item(db_path, inventory_item, run_id)
 
     # Infrastructure (K8s) Scan
-    print(f"☸️  Scanning Kubernetes manifests...", file=sys.stderr)
-    k8s_suspects = k8s_scanner.scan()
-    for suspect in k8s_suspects:
-        algo = suspect.pattern_matched
-        hndl = calculate_hndl_score(algo, longevity_years, sensitivity)
-        severity = severity_from_hndl(hndl)
-        
-        scan_res = ScanResult(
-            path=suspect.path,
-            line=suspect.line,
-            rule_id=f"INFRA-{algo.upper().replace(' ', '-')[:20]}",
-            message=f"Infra PQC vulnerability: {suspect.content_snippet}",
-            severity=severity,
-            algorithm=algo,
-            pqc_recommendation="Update TLS config to PQC-ready groups",
-            hndl_score=hndl,
-            run_id=run_id
-        )
-        results.append(scan_res)
+    if k8s_scanner:
+        print(f"☸️  Scanning Kubernetes manifests...", file=sys.stderr)
+        k8s_suspects = k8s_scanner.scan()
+        for suspect in k8s_suspects:
+            algo = suspect.pattern_matched
+            hndl = calculate_hndl_score(algo, longevity_years, sensitivity)
+            severity = severity_from_hndl(hndl)
+            
+            scan_res = ScanResult(
+                path=suspect.path,
+                line=suspect.line,
+                rule_id=f"INFRA-{algo.upper().replace(' ', '-')[:20]}",
+                message=f"Infra PQC vulnerability: {suspect.content_snippet}",
+                severity=severity,
+                algorithm=algo,
+                pqc_recommendation="Update TLS config to PQC-ready groups",
+                hndl_score=hndl,
+                run_id=run_id
+            )
+            results.append(scan_res)
     
     # Binary SCA Scan
-    print(f"📦 Auditing compiled binaries for crypto signatures...", file=sys.stderr)
-    binary_findings = binary_scanner.scan_directory(str(repo))
-    for bf in binary_findings:
-        hndl = calculate_hndl_score(bf.algorithm, longevity_years, sensitivity)
-        severity = bf.severity.lower()
+    if binary_scanner:
+        print(f"📦 Auditing compiled binaries for crypto signatures...", file=sys.stderr)
+        binary_findings = binary_scanner.scan_directory(str(repo))
+        for bf in binary_findings:
+            hndl = calculate_hndl_score(bf.algorithm, longevity_years, sensitivity)
+            severity = bf.severity.lower()
+            
+            scan_res = ScanResult(
+                path=bf.path,
+                line=0,  # Line number not applicable for hex signatures
+                rule_id=f"BIN-{bf.algorithm.upper()}",
+                message=f"Binary signature detected: {bf.description}",
+                severity=severity,
+                algorithm=bf.algorithm,
+                pqc_recommendation="Verify origin of binary and recompile with PQC-ready library",
+                hndl_score=hndl,
+                run_id=run_id
+            )
+            results.append(scan_res)
+
+    # Auto-Generate Strategic Advisory
+    if results:
+        print("\n" + "="*80)
+        print("🤖 AI STRATEGIC ADVISORY (Auto-Generated)")
+        print("="*80)
+        from risk.advisory import StrategicAdvisoryEngine
         
-        scan_res = ScanResult(
-            path=bf.path,
-            line=0,  # Line number not applicable for hex signatures
-            rule_id=f"BIN-{bf.algorithm.upper()}",
-            message=f"Binary signature detected: {bf.description}",
-            severity=severity,
-            algorithm=bf.algorithm,
-            pqc_recommendation="Verify origin of binary and recompile with PQC-ready library",
-            hndl_score=hndl,
-            run_id=run_id
-        )
-        results.append(scan_res)
+        advisory_findings = []
+        for r in results:
+            advisory_findings.append({
+                "name": r.message,
+                "type": r.rule_id,
+                "severity": r.severity,
+                "path": r.path
+            })
+            
+        engine = StrategicAdvisoryEngine()
+        advisories = engine.generate_advisories(advisory_findings)
+        
+        if not advisories:
+            print("✅ No high-priority strategic advisories generated.")
+        else:
+            for a in advisories:
+                urgency_icon = "🔴" if a.urgency == "High" else "🟡" if a.urgency == "Medium" else "🔵"
+                print("-" * 80)
+                print(f"{urgency_icon} [{a.category.upper()}] {a.title}")
+                print("-" * 80)
+                print(f"Guidance: {a.guidance}")
+                print(f"Linked Findings: {len(a.linked_findings)}")
+        print("="*80 + "\n")
     
     # Also sync K8s findings to inventory
-    for item in k8s_scanner.get_inventory():
-        save_inventory_item(db_path, item, run_id)
+    if k8s_scanner:
+        for item in k8s_scanner.get_inventory():
+            save_inventory_item(db_path, item, run_id)
     
     return results, run_id
 

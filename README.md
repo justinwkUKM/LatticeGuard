@@ -164,8 +164,17 @@ python3 cli/cicd_scanner.py <command> [options]
 Scan a repository or directory for PQC vulnerabilities with HNDL risk scoring.
 
 ```bash
+```bash
 python3 cli/cicd_scanner.py scan <path> [options]
 ```
+
+**🧠 Smart Scan Mode**:
+When you run `scan`, LatticeGuard automatically fingerprints the repository to select the best tools:
+- Checks for `package.json` / `pom.xml` → Activates Dependency Scanner
+- Checks for `*.yaml` / `*.tf` → Activates Infrastructure Scanner
+- Checks for `*.so` / `*.dll` → Activates Binary SCA
+- Always runs SAST and Secret Scanning.
+- **Auto-Advisory**: Automatically generates a Strategic Advisory report at the end of the scan.
 
 | Flag | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
