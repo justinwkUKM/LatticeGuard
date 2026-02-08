@@ -115,18 +115,6 @@ from scanner.treesitter_scanner import TreeSitterScanner
 from scanner.kubernetes import KubernetesScanner
 
 def log_to_db(run_id, message, level="INFO", component="Worker"):
-    db_url = os.getenv("DATABASE_URL", "/data/pqc.db").replace("sqlite:///", "")
-    try:
-        conn = sqlite3.connect(db_url)
-        c = conn.cursor()
-        c.execute("INSERT INTO scan_logs (run_id, level, component, message) VALUES (?, ?, ?, ?)",
-                  (run_id, level, component, message))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"Logging Failure: {e}")
-
-def log_to_db(run_id, message, level="INFO", component="Worker"):
     db_path = os.getenv("DATABASE_URL", "/data/pqc.db").replace("sqlite:///", "")
     try:
         conn = sqlite3.connect(db_path)
@@ -184,10 +172,10 @@ def process_analysis(parent_job_id, repo_path, file_path, cleanup=False, task_da
         _increment_progress(parent_job_id)
         return True 
 
-    # --- STEP 1b: Java/C++ AST Analysis (Tree-sitter) ---
-    if file_path.endswith((".java", ".cpp", ".cc", ".cxx", ".hpp", ".h")):
-        log_to_db(parent_job_id, f"Java/C++ source detected: {file_path}. Running AST-based crypto analysis...", component="TreeSitter")
-        print(f"[{parent_job_id}] 🌳 Java/C++ detected: {file_path}. Running tree-sitter AST scan...")
+    # --- STEP 1b: Java/C++/Rust/C# AST Analysis (Tree-sitter) ---
+    if file_path.endswith((".java", ".cpp", ".cc", ".cxx", ".hpp", ".h", ".rs", ".cs")):
+        log_to_db(parent_job_id, f"Source code detected: {file_path}. Running AST-based crypto analysis...", component="TreeSitter")
+        print(f"[{parent_job_id}] 🌳 Source detected: {file_path}. Running tree-sitter AST scan...")
         ts_scanner = TreeSitterScanner()
         ts_suspects = ts_scanner.scan_file(full_path)
         

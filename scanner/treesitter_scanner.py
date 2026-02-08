@@ -4,6 +4,8 @@ Uses AST analysis for accurate identification of PQC-vulnerable crypto usage.
 """
 import tree_sitter_java as tsjava
 import tree_sitter_cpp as tscpp
+import tree_sitter_rust as tsrust
+import tree_sitter_c_sharp as tscsharp
 from tree_sitter import Language, Parser
 from pathlib import Path
 from typing import List, Optional, Set
@@ -12,11 +14,13 @@ from schemas.models import Suspect
 # Initialize languages
 JAVA_LANGUAGE = Language(tsjava.language())
 CPP_LANGUAGE = Language(tscpp.language())
+RUST_LANGUAGE = Language(tsrust.language())
+CSHARP_LANGUAGE = Language(tscsharp.language())
 
 
 class TreeSitterScanner:
     """
-    AST-based scanner for Java and C++ files using tree-sitter.
+    AST-based scanner for Java, C++, Rust, and C# files using tree-sitter.
     Detects cryptographic API calls that are vulnerable to quantum attacks.
     """
     
@@ -101,10 +105,32 @@ class TreeSitterScanner:
         "ECDSA_PrivateKey": ("high", "Botan ECDSA private key"),
         "DH_PrivateKey": ("high", "Botan DH private key"),
     }
+
+    # Rust crypto patterns
+    RUST_CRYPTO_PATTERNS = {
+        "Rsa::generate": ("high", "Rust 'rsa' crate key generation"),
+        "RSA_PKCS1_2048_8192_SHA256": ("high", "Rust 'ring' RSA signing (Shor vulnerable)"),
+        "ECDH_P256": ("high", "Rust 'ring' ECDH (Shor vulnerable)"),
+        "Keypair::generate": ("high", "Rust 'ed25519-dalek' key generation"),
+        "Md5::new": ("medium", "Rust weak hash usage (MD5)"),
+        "Sha1::new": ("medium", "Rust weak hash usage (SHA-1)"),
+    }
+
+    # C# crypto patterns
+    CSHARP_CRYPTO_PATTERNS = {
+        "RSA.Create": ("high", ".NET RSA instantiation"),
+        "ECDsa.Create": ("high", ".NET ECDSA instantiation"),
+        "SHA1.Create": ("medium", ".NET SHA-1 instantiation"),
+        "MD5.Create": ("medium", ".NET MD5 instantiation"),
+        "DSACryptoServiceProvider": ("high", ".NET Legacy DSA provider"),
+        "RSACryptoServiceProvider": ("high", ".NET Legacy RSA provider"),
+    }
     
     def __init__(self):
         self.java_parser = Parser(JAVA_LANGUAGE)
         self.cpp_parser = Parser(CPP_LANGUAGE)
+        self.rust_parser = Parser(RUST_LANGUAGE)
+        self.csharp_parser = Parser(CSHARP_LANGUAGE)
         self.suspects: List[Suspect] = []
     
     def scan_file(self, file_path: Path) -> List[Suspect]:
@@ -127,6 +153,12 @@ class TreeSitterScanner:
             elif suffix in [".cpp", ".cc", ".cxx", ".c++", ".hpp", ".hxx", ".h"]:
                 tree = self.cpp_parser.parse(content)
                 self._walk_cpp_tree(file_path, tree.root_node, text)
+            elif suffix == ".rs":
+                tree = self.rust_parser.parse(content)
+                self._walk_rust_tree(file_path, tree.root_node, text)
+            elif suffix == ".cs":
+                tree = self.csharp_parser.parse(content)
+                self._walk_cs_tree(file_path, tree.root_node, text)
                 
         except Exception as e:
             # Silently handle errors to match existing scanner behavior
@@ -226,11 +258,96 @@ class TreeSitterScanner:
                 pattern_matched=f"CPP_{func_name}",
                 confidence="high" if risk == "high" else "medium"
             ))
+
+    def _walk_rust_tree(self, file_path: Path, node, text: str):
+        """Walk Rust AST looking for function calls."""
+        if node.type == "call_expression":
+            self._analyze_rust_call(file_path, node, text)
+        
+        for child in node.children:
+            self._walk_rust_tree(file_path, child, text)
+
+    def _analyze_rust_call(self, file_path: Path, node, text: str):
+        """Analyze a Rust call expression for crypto patterns."""
+        func_text = ""
+        for child in node.children:
+            if child.type in ["identifier", "scoped_identifier", "field_expression"]:
+                func_text = text[child.start_byte:child.end_byte]
+                break
+        
+        # Handle simple name or qualified name
+        func_name = func_text.split("::")[-1] if "::" in func_text else func_text
+        
+        # Check full text first (e.g. Rsa::generate) then just the name
+        match_key = None
+        if func_text in self.RUST_CRYPTO_PATTERNS:
+            match_key = func_text
+        elif func_name in self.RUST_CRYPTO_PATTERNS:
+            match_key = func_name
+            
+        if match_key:
+            risk, desc = self.RUST_CRYPTO_PATTERNS[match_key]
+            line_num = node.start_point[0] + 1
+            snippet = text[node.start_byte:node.end_byte]
+            
+            self.suspects.append(Suspect(
+                path=str(file_path),
+                line=line_num,
+                content_snippet=snippet[:100] + ("..." if len(snippet) > 100 else ""),
+                type="code",
+                pattern_matched=f"Rust_{match_key.replace('::', '_')}",
+                confidence="high" if risk == "high" else "medium"
+            ))
+
+    def _walk_cs_tree(self, file_path: Path, node, text: str):
+        """Walk C# AST looking for invocations."""
+        if node.type == "invocation_expression" or node.type == "object_creation_expression":
+            self._analyze_cs_call(file_path, node, text)
+        
+        for child in node.children:
+            self._walk_cs_tree(file_path, child, text)
+
+    def _analyze_cs_call(self, file_path: Path, node, text: str):
+        """Analyze a C# invocation or object creation for crypto patterns."""
+        call_text = ""
+        if node.type == "invocation_expression":
+            # Finding the identifier/expression being called
+            for child in node.children:
+                if child.type in ["identifier", "member_access_expression"]:
+                    call_text = text[child.start_byte:child.end_byte]
+                    break
+        else: # object_creation_expression
+            for child in node.children:
+                if child.type == "identifier_name" or child.type == "qualified_name":
+                    call_text = text[child.start_byte:child.end_byte]
+                    break
+        
+        # Extract name
+        call_name = call_text.split(".")[-1] if "." in call_text else call_text
+        
+        match_key = None
+        if call_text in self.CSHARP_CRYPTO_PATTERNS:
+            match_key = call_text
+        elif call_name in self.CSHARP_CRYPTO_PATTERNS:
+            match_key = call_name
+            
+        if match_key:
+            risk, desc = self.CSHARP_CRYPTO_PATTERNS[match_key]
+            line_num = node.start_point[0] + 1
+            snippet = text[node.start_byte:node.end_byte]
+            
+            self.suspects.append(Suspect(
+                path=str(file_path),
+                line=line_num,
+                content_snippet=snippet[:100] + ("..." if len(snippet) > 100 else ""),
+                type="code",
+                pattern_matched=f"CS_{match_key.replace('.', '_')}",
+                confidence="high" if risk == "high" else "medium"
+            ))
     
     def get_pattern_info(self, pattern_matched: str) -> dict:
         """Get detailed info about a matched pattern for remediation guidance."""
         if pattern_matched.startswith("Java_"):
-            # Reconstruct the pattern key
             parts = pattern_matched[5:].split("_")
             class_name = parts[0]
             method_name = parts[1] if len(parts) > 1 else ""
@@ -240,5 +357,25 @@ class TreeSitterScanner:
             func_name = pattern_matched[4:]
             if func_name in self.CPP_CRYPTO_FUNCTIONS:
                 risk, desc = self.CPP_CRYPTO_FUNCTIONS[func_name]
+                return {"risk": risk, "desc": desc}
+        elif pattern_matched.startswith("Rust_"):
+            key = pattern_matched[5:].replace("_", "::")
+            # Try original key or last part
+            if key in self.RUST_CRYPTO_PATTERNS:
+                risk, desc = self.RUST_CRYPTO_PATTERNS[key]
+                return {"risk": risk, "desc": desc}
+            # Fallback for keys that didn't have :: but were matched
+            last_part = key.split("::")[-1]
+            if last_part in self.RUST_CRYPTO_PATTERNS:
+                risk, desc = self.RUST_CRYPTO_PATTERNS[last_part]
+                return {"risk": risk, "desc": desc}
+        elif pattern_matched.startswith("CS_"):
+            key = pattern_matched[3:].replace("_", ".")
+            if key in self.CSHARP_CRYPTO_PATTERNS:
+                risk, desc = self.CSHARP_CRYPTO_PATTERNS[key]
+                return {"risk": risk, "desc": desc}
+            last_part = key.split(".")[-1]
+            if last_part in self.CSHARP_CRYPTO_PATTERNS:
+                risk, desc = self.CSHARP_CRYPTO_PATTERNS[last_part]
                 return {"risk": risk, "desc": desc}
         return {}
