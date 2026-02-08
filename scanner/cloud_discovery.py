@@ -1,3 +1,8 @@
+"""
+LatticeGuard - Post-Quantum Cryptography Assessment Tool
+Copyright (c) 2026 Waqas Khalid Obeidy
+"""
+
 import os
 from typing import List, Dict, Optional
 from schemas.models import InventoryItem

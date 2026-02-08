@@ -1,4 +1,9 @@
 """
+LatticeGuard - Post-Quantum Cryptography Assessment Tool
+Copyright (c) 2026 Waqas Khalid Obeidy
+"""
+
+"""
 Kubernetes Manifest Scanner
 Parses Kubernetes YAML manifests to identify PQC-vulnerable cryptographic configurations.
 """

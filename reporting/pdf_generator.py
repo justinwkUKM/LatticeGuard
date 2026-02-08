@@ -1,4 +1,9 @@
 """
+LatticeGuard - Post-Quantum Cryptography Assessment Tool
+Copyright (c) 2026 Waqas Khalid Obeidy
+"""
+
+"""
 PDF Compliance Report Generator
 Generates professional PDF reports with NIST/CNSA compliance mapping for PQC assessment findings.
 """

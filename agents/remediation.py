@@ -1,3 +1,8 @@
+"""
+LatticeGuard - Post-Quantum Cryptography Assessment Tool
+Copyright (c) 2026 Waqas Khalid Obeidy
+"""
+
 from typing import List, Optional
 import json
 from pathlib import Path

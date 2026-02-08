@@ -1,4 +1,9 @@
 """
+LatticeGuard - Post-Quantum Cryptography Assessment Tool
+Copyright (c) 2026 Waqas Khalid Obeidy
+"""
+
+"""
 Tree-sitter based scanner for Java and C++ cryptographic pattern detection.
 Uses AST analysis for accurate identification of PQC-vulnerable crypto usage.
 """

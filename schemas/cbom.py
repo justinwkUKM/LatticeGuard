@@ -1,4 +1,9 @@
 """
+LatticeGuard - Post-Quantum Cryptography Assessment Tool
+Copyright (c) 2026 Waqas Khalid Obeidy
+"""
+
+"""
 Cryptography Bill of Materials (CBOM) Schema
 Based on CycloneDX 1.6 Cryptographic Assets specification
 """

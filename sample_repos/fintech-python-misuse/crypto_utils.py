@@ -1,3 +1,11 @@
+"""
+FinTech Crypto Utilities - PQC Vulnerability Demonstration
+
+Author:     PayNet R&D Team
+Project:    LatticeGuard PQC Assessment
+Created:    2026-02-08
+Purpose:    Demonstrates crypto misuse patterns (MD5/SHA1/RSA)
+"""
 import hashlib
 
 def generate_checksum(file_path):

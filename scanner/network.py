@@ -1,4 +1,9 @@
 """
+LatticeGuard - Post-Quantum Cryptography Assessment Tool
+Copyright (c) 2026 Waqas Khalid Obeidy
+"""
+
+"""
 Enhanced Network Scanner with Certificate Chain Extraction and TLS Fingerprinting
 """
 import ssl

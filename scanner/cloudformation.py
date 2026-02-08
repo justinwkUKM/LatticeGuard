@@ -1,4 +1,9 @@
 """
+LatticeGuard - Post-Quantum Cryptography Assessment Tool
+Copyright (c) 2026 Waqas Khalid Obeidy
+"""
+
+"""
 CloudFormation Template Scanner
 Parses AWS CloudFormation YAML/JSON templates to identify PQC-vulnerable cryptographic configurations.
 """
