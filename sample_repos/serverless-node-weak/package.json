@@ -1,0 +1,9 @@
+{
+    "name": "serverless-auth-worker",
+    "version": "1.0.0",
+    "dependencies": {
+        "node-rsa": "^1.1.1",
+        "crypto-js": "^4.1.1",
+        "aws-sdk": "^2.1450.0"
+    }
+}

@@ -113,7 +113,7 @@ class PatternScanner:
             for f in filenames:
                 file_path = Path(dirpath) / f
                 # Scan all text-based files or suspicious files
-                if f.endswith(('.py', '.java', '.cpp', '.cc', '.h', '.hpp', '.rs', '.cs', '.go', '.ts', '.js', '.yaml', '.yml', '.env', '.log', '.txt', '.sql')):
+                if f.endswith(('.py', '.java', '.cpp', '.cc', '.h', '.hpp', '.rs', '.cs', '.go', '.ts', '.js', '.yaml', '.yml', '.env', '.log', '.txt', '.sql', '.tf', '.tfstate')):
                     suspects.extend(self.scan_file(file_path))
         return suspects
 
