@@ -1,7 +1,11 @@
-import os
+from pathlib import Path
 
 # Create a 10MB file with a PQC vulnerability at the end
-file_path = "/Users/waqas/Documents/PQCAssessment/tests/samples/large_vulnerable_file.sql"
+base_dir = Path(__file__).parent
+file_path = base_dir / "samples" / "large_vulnerable_file.sql"
+
+# Ensure directory exists
+file_path.parent.mkdir(parents=True, exist_ok=True)
 target_size = 10 * 1024 * 1024 # 10MB
 
 with open(file_path, "w") as f:
