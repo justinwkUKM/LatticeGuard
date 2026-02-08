@@ -47,6 +47,7 @@ from scanner.suppression import SuppressionManager
 from scanner.cloud_discovery import CloudDiscoveryManager
 from scanner.treesitter_scanner import TreeSitterScanner
 from scanner.kubernetes import KubernetesScanner
+from scanner.binary_audit import BinaryAuditScanner
 from schemas.models import InventoryItem
 
 
@@ -176,6 +177,7 @@ def scan_repository(
     dep_scanner = DependencyScanner(str(repo))
     ts_scanner = TreeSitterScanner()
     k8s_scanner = KubernetesScanner(str(repo))
+    binary_scanner = BinaryAuditScanner()
     
     # Run scans
     print(f"🔍 Scanning {repo_path} (Run ID: {run_id})...", file=sys.stderr)
@@ -317,6 +319,26 @@ def scan_repository(
             severity=severity,
             algorithm=algo,
             pqc_recommendation="Update TLS config to PQC-ready groups",
+            hndl_score=hndl,
+            run_id=run_id
+        )
+        results.append(scan_res)
+    
+    # Binary SCA Scan
+    print(f"📦 Auditing compiled binaries for crypto signatures...", file=sys.stderr)
+    binary_findings = binary_scanner.scan_directory(str(repo))
+    for bf in binary_findings:
+        hndl = calculate_hndl_score(bf.algorithm, longevity_years, sensitivity)
+        severity = bf.severity.lower()
+        
+        scan_res = ScanResult(
+            path=bf.path,
+            line=0,  # Line number not applicable for hex signatures
+            rule_id=f"BIN-{bf.algorithm.upper()}",
+            message=f"Binary signature detected: {bf.description}",
+            severity=severity,
+            algorithm=bf.algorithm,
+            pqc_recommendation="Verify origin of binary and recompile with PQC-ready library",
             hndl_score=hndl,
             run_id=run_id
         )
@@ -560,6 +582,18 @@ Examples:
     ssl_deep_parser.add_argument("--no-cache", action="store_true", help="Force fresh scan (slow, rate-limited)")
     ssl_deep_parser.add_argument("--format", choices=["table", "json"], default="table", help="Output format")
     
+    # Advisory command - Strategic guidance for blind spots
+    advisory_parser = subparsers.add_parser("advisory", help="Generate strategic guidance for enterprise blind spots")
+    advisory_parser.add_argument("path", help="Path to repository to analyze")
+    advisory_parser.add_argument("--format", choices=["table", "json"], default="table", help="Output format")
+    
+    # Regression simulator command
+    reg_parser = subparsers.add_parser("regression", help="Simulate PQC performance regression impact")
+    reg_parser.add_argument("--algo", default="RSA-2048", help="Baseline algorithm (default: RSA-2048)")
+    reg_parser.add_argument("--target", default="ML-KEM-768", help="Target PQC algorithm (default: ML-KEM-768)")
+    reg_parser.add_argument("--rtt", type=float, default=50.0, help="Baseline RTT in ms (default: 50.0)")
+    reg_parser.add_argument("--bw", type=float, default=100.0, help="Bandwidth in Mbps (default: 100.0)")
+    
     args = parser.parse_args()
     
     if not args.command:
@@ -743,6 +777,86 @@ Examples:
             lines.append("=" * 80)
             lines.append("")
             print("\n".join(lines))
+        
+        sys.exit(0)
+
+    # Handle Advisory command - Strategic guidance for blind spots
+    if args.command == "advisory":
+        from risk.advisory import StrategicAdvisoryEngine
+        import json
+        
+        print(f"👨‍🏫 Generating Strategic Advisory for: {args.path}...", file=sys.stderr)
+        
+        # We need findings to generate advisories. Run a quick scan.
+        results, _ = scan_repository(args.path)
+        
+        # Convert objects to dicts for the engine
+        findings = []
+        for r in results:
+            findings.append({
+                "name": r.message,
+                "type": r.rule_id, # using rule_id as type for smarter matching
+                "severity": r.severity,
+                "path": r.path
+            })
+            
+        engine = StrategicAdvisoryEngine()
+        advisories = engine.generate_advisories(findings)
+        
+        if args.format == "json":
+            output = [
+                {
+                    "title": a.title,
+                    "category": a.category,
+                    "guidance": a.guidance,
+                    "urgency": a.urgency,
+                    "action_items": a.action_items,
+                    "linked_findings": a.linked_findings
+                }
+                for a in advisories
+            ]
+            print(json.dumps(output, indent=2))
+        else:
+            if not advisories:
+                print("✅ No high-priority strategic advisories generated for this repository.")
+            else:
+                for a in advisories:
+                    urgency_icon = "🔴" if a.urgency == "High" else "🟡" if a.urgency == "Medium" else "🔵"
+                    print("-" * 80)
+                    print(f"{urgency_icon} [{a.category.upper()}] {a.title}")
+                    print("-" * 80)
+                    print(f"Guidance: {a.guidance}")
+                    print("\nRecommended Actions:")
+                    for item in a.action_items:
+                        print(f"  [ ] {item}")
+                    print("\nLinked Findings:", ", ".join(set(a.linked_findings[:5])))
+                    print("")
+        
+        sys.exit(0)
+
+    # Handle Regression Simulation command
+    if args.command == "regression":
+        from risk.perf_simulator import PerformanceSimulator
+        
+        print(f"📊 Simulating PQC Regression: {args.algo} → {args.target}", file=sys.stderr)
+        
+        simulator = PerformanceSimulator(baseline_rtt_ms=args.rtt, bandwidth_mbps=args.bw)
+        impact = simulator.estimate_impact(args.algo, args.target)
+        
+        print("\n" + "=" * 80)
+        print("PQC PERFORMANCE REGRESSION ESTIMATE")
+        print("=" * 80)
+        print(f"Current Algorithm:   {impact['current_algorithm']}")
+        print(f"Target Algorithm:    {impact['target_algorithm']}")
+        print("-" * 80)
+        print(f"Extra Payload Data:  {impact['extra_data_bytes']} bytes")
+        print(f"Latency Increase:    +{impact['latency_increase_ms']} ms")
+        print(f"Est. Handshake RTT:  {impact['estimated_pqc_handshake_ms']} ms")
+        print(f"Compute Overhead:    {impact['compute_overhead_multiplier']}x cycles")
+        print(f"MTU Fragmentation:   {impact['risk_of_mtu_fragmentation']}")
+        print("-" * 80)
+        print("Note: Estimates based on NIST Round 3 submission data.")
+        print("=" * 80 + "\n")
         
         sys.exit(0)
     

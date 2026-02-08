@@ -12,6 +12,7 @@ Built with a focus on lattice-based cryptography resilience, the tool supports a
 
 ### Discovery Layers
 - **Advanced SAST**: AST-based analysis for Java, C++, Python, Go, and JavaScript using Tree-sitter for high-fidelity detection.
+- **Binary SCA**: Recursive auditing of compiled binaries (.so, .dll, .exe) to detect embedded crypto signatures and S-Boxes.
 - **Infrastructure as Code (IaC)**: Native parsing for Kubernetes manifests, Terraform, and CloudFormation to identify kms and TLS misconfigurations.
 - **External Attack Surface (EASM)**: Discovery of shadow IT and legacy protocols (FTP, Telnet) via active auditing and Shodan/Censys integration.
 - **Supply Chain (SCA)**: Transitive dependency resolution for Go and Python manifests to flag PQC-vulnerable libraries.
@@ -23,12 +24,15 @@ Built with a focus on lattice-based cryptography resilience, the tool supports a
 - **Quantum Resilience Score**: A 0-100 metric evaluating the overall quantum readiness of a target service or repository.
 - **AI Secret Triage**: Gemini-based filtering to reduce credential noise and prioritize valid risks.
 - **Live Verification**: Automated validation of detected secrets (e.g., AWS, GitHub) against provider APIs.
+- **eBPF Runtime Monitor**: Kernel-level tracing of cryptographic API calls (OpenSSL, GnuTLS) to detect "Shadow Crypto" in real-time.
 
 ### Compliance & Reporting
 - **Cryptographic BOM (CBOM)**: Automated generation of Cryptographic Bill of Materials in CycloneDX 1.6 format.
 - **NIST/CNSA Alignment**: Professional PDF reports mapping findings to NIST SP 800-208 and CNSA 2.0 timelines.
 - **Blast Radius Visualization**: Interactive graph-based analysis of cryptographic dependency propagation.
 - **Agility Dashboard**: Tracking of algorithm distribution and cryptographic agility across the organization.
+- **Strategic Advisory**: Contextual guidance engine that translates technical findings into board-level strategy (HSM lifecycle, Vendor Risk).
+- **Performance Simulator**: Impact analysis for PQC latency and bandwidth overhead (e.g. RSA-2048 vs ML-KEM-768).
 
 ---
 
@@ -519,6 +523,47 @@ python3 cli/cicd_scanner.py ssl-deep paynet.my --format json
 - Certificate details (key algorithm, signature)
 - Known vulnerabilities (POODLE, Heartbleed, ROBOT, etc.)
 - PQC readiness assessment
+
+---
+
+### `advisory` - Strategic Guidance Engine
+
+Generate board-level strategic advice based on technical findings.
+
+```bash
+python3 cli/cicd_scanner.py advisory <path> [options]
+```
+
+| Flag | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `path` | required | - | Path to repository to analyze |
+| `--format` | `table\|json` | `table` | Output format |
+
+**Use Case:**
+- Translates "Hardcoded RSA Key" → "PKI Transition Strategy"
+- Translates "AWS Key Detected" → "Shared Responsibility Model Advice"
+
+---
+
+### `regression` - Performance Simulator
+
+Estimate the network and compute impact of switching to PQC.
+
+```bash
+python3 cli/cicd_scanner.py regression [options]
+```
+
+| Flag | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--algo` | string | `RSA-2048` | Current baseline algorithm |
+| `--target` | string | `ML-KEM-768` | Target PQC algorithm |
+| `--rtt` | float | `50.0` | Baseline RTT (ms) |
+| `--bw` | float | `100.0` | Bandwidth (Mbps) |
+
+**Output:**
+- Extra payload size (bytes)
+- Latency penalty (ms)
+- Compute overhead factor
 
 ---
 
