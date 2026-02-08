@@ -586,6 +586,7 @@ Examples:
     advisory_parser = subparsers.add_parser("advisory", help="Generate strategic guidance for enterprise blind spots")
     advisory_parser.add_argument("path", help="Path to repository to analyze")
     advisory_parser.add_argument("--format", choices=["table", "json"], default="table", help="Output format")
+    advisory_parser.add_argument("-o", "--output", help="Output file path")
     
     # Regression simulator command
     reg_parser = subparsers.add_parser("regression", help="Simulate PQC performance regression impact")
@@ -815,22 +816,35 @@ Examples:
                 }
                 for a in advisories
             ]
-            print(json.dumps(output, indent=2))
+            output_content = json.dumps(output, indent=2)
         else:
+            lines = []
             if not advisories:
-                print("✅ No high-priority strategic advisories generated for this repository.")
+                lines.append("✅ No high-priority strategic advisories generated for this repository.")
             else:
+                lines.append("\n" + "=" * 80)
+                lines.append("STRATEGIC ADVISORY REPORT")
+                lines.append("=" * 80)
                 for a in advisories:
                     urgency_icon = "🔴" if a.urgency == "High" else "🟡" if a.urgency == "Medium" else "🔵"
-                    print("-" * 80)
-                    print(f"{urgency_icon} [{a.category.upper()}] {a.title}")
-                    print("-" * 80)
-                    print(f"Guidance: {a.guidance}")
-                    print("\nRecommended Actions:")
+                    lines.append("-" * 80)
+                    lines.append(f"{urgency_icon} [{a.category.upper()}] {a.title}")
+                    lines.append("-" * 80)
+                    lines.append(f"Guidance: {a.guidance}")
+                    lines.append("\nRecommended Actions:")
                     for item in a.action_items:
-                        print(f"  [ ] {item}")
-                    print("\nLinked Findings:", ", ".join(set(a.linked_findings[:5])))
-                    print("")
+                        lines.append(f"  [ ] {item}")
+                    lines.append("\nLinked Findings: " + ", ".join(set(a.linked_findings[:5])))
+                    lines.append("")
+                lines.append("=" * 80 + "\n")
+            output_content = "\n".join(lines)
+        
+        if args.output:
+            with open(args.output, "w") as f:
+                f.write(output_content)
+            print(f"✅ Advisory report written to {args.output}", file=sys.stderr)
+        else:
+            print(output_content)
         
         sys.exit(0)
 

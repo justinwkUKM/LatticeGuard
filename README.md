@@ -538,6 +538,7 @@ python3 cli/cicd_scanner.py advisory <path> [options]
 | :--- | :--- | :--- | :--- |
 | `path` | required | - | Path to repository to analyze |
 | `--format` | `table\|json` | `table` | Output format |
+| `-o, --output` | string | stdout | Output file path |
 
 **Use Case:**
 - Translates "Hardcoded RSA Key" → "PKI Transition Strategy"
