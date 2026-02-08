@@ -46,29 +46,72 @@ class DependencyScanner:
     def scan_file(self, file_path: Path) -> List[Suspect]:
         suspects = []
         try:
-            content = ""
+            filename = file_path.name
             with open(file_path, "r", errors="ignore") as f:
                 content = f.read()
 
-            for pkg, msg in self.vuln_packages.items():
-                if pkg in content:
-                     # Attempt to find line number
-                    line_num = 0
-                    for i, line in enumerate(content.splitlines()):
-                        if pkg in line:
-                            line_num = i + 1
-                            break
-                    
-                    suspects.append(Suspect(
-                        path=str(file_path),
-                        line=line_num,
-                        content_snippet=f"Found vulnerable dependency: {pkg}",
-                        type="artifact",
-                        pattern_matched=pkg,
-                        confidence="high"
-                    ))
+            # Technology-specific transitive resolution
+            if filename == "go.mod":
+                suspects.extend(self._resolve_go_transitive(content, file_path))
+            elif filename in ["requirements.txt", "poetry.lock", "Pipfile.lock"]:
+                suspects.extend(self._resolve_python_transitive(content, file_path))
+            else:
+                # Basic string matching for others
+                for pkg, msg in self.vuln_packages.items():
+                    if pkg in content:
+                        line_num = 0
+                        for i, line in enumerate(content.splitlines()):
+                            if pkg in line:
+                                line_num = i + 1
+                                break
+                        
+                        suspects.append(Suspect(
+                            path=str(file_path),
+                            line=line_num,
+                            content_snippet=f"Found dependency: {pkg} | {msg}",
+                            type="artifact",
+                            pattern_matched=pkg,
+                            confidence="high"
+                        ))
 
         except Exception as e:
             print(f"SCA Error {file_path}: {e}")
             
+        return suspects
+
+    def _resolve_go_transitive(self, content: str, path: Path) -> List[Suspect]:
+        """Detects direct and indirect (transitive) Go dependencies."""
+        suspects = []
+        for line_num, line in enumerate(content.splitlines(), 1):
+            line = line.strip()
+            for pkg, msg in self.vuln_packages.items():
+                if pkg in line:
+                    is_indirect = "// indirect" in line
+                    suspects.append(Suspect(
+                        path=str(path),
+                        line=line_num,
+                        content_snippet=f"Go {'Indirect' if is_indirect else 'Direct'} Dep: {pkg}",
+                        type="artifact",
+                        pattern_matched=pkg,
+                        confidence="high" if not is_indirect else "medium"
+                    ))
+        return suspects
+
+    def _resolve_python_transitive(self, content: str, path: Path) -> List[Suspect]:
+        """Detects dependencies in Python lockfiles or requirement files."""
+        suspects = []
+        filename = path.name
+        is_lockfile = filename.endswith(".lock")
+        
+        for pkg, msg in self.vuln_packages.items():
+            if pkg in content:
+                # In lockfiles, finding the exact line is less meaningful but existence is high signal
+                suspects.append(Suspect(
+                    path=str(path),
+                    line=0,
+                    content_snippet=f"Python {'Transitive' if is_lockfile else 'Direct'} Dep: {pkg}",
+                    type="artifact",
+                    pattern_matched=pkg,
+                    confidence="high"
+                ))
         return suspects

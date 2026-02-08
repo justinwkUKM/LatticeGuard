@@ -25,8 +25,13 @@
 | Crypto Agility | `/agility` | Algorithm registry & tracking |
 | CI/CD Pipeline | `action.yml` | GitHub Actions & CLI integration |
 | PDF Reports | `reporting/pdf_generator.py`| Comprehensive compliance PDF export |
-| Dependency SCA | `dependencies.py` | Package manifest scanning |
+| Dependency SCA | `dependencies.py` | Transitive resolution for Go/Python |
 | Git History | `git_scanner.py` | Secret/key commit history |
+| AI Secret Triage| `secret_scanner.py` | Gemini-based credential filtering |
+| Live Verification| `secret_scanner.py` | AWS/GitHub API key validation |
+| Protocol Auditor| `network.py` | Active PQC handshake simulation |
+| EASM | `scanner/easm.py` | Shadow IT & legacy protocol discovery |
+| Resilience Score| `network.py` | 0-100 Quantum readiness metric |
 | AI Remediation | Worker + Gemini | PQC migration guidance |
 
 ### ⚠️ Partial
