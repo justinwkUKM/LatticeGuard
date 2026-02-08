@@ -1,9 +1,35 @@
-# Banking Legacy System
+# Legacy Banking System - PQC Assessment Demo
 
-This module handles sensitive customer financial data, including transaction history and account balances.
+This sample represents a typical **Malaysian banking legacy system** using vulnerable cryptographic algorithms.
 
-## Risk Context
-- **Data Sensitivity**: Confidential / Financial
-- **Data Longevity**: 10 years (Regulatory requirement for audit trails)
+## Business Context
+- **System Type**: Core Banking / Payment Gateway
+- **Data Sensitivity**: Financial (HNDL High-Risk)
+- **Data Retention**: 7 years (BNM requirement for financial records)
+- **Regulatory**: Bank Negara Malaysia, PCI-DSS
 
-LatticeGuard will identify that the RSA-1024 keys used here are vulnerable to harvest-now-decrypt-later (HNDL) attacks because the data must remain secret for a decade, while quantum computers are expected to break RSA within that timeframe.
+## Vulnerabilities Demonstrated
+
+### 1. RSA-1024 Key Generation (Java)
+```java
+KeyPairGenerator.getInstance("RSA");
+kpg.initialize(1024); // Shor-vulnerable
+```
+**Risk**: Core banking certificates using weak RSA can be forged by CRQC.
+
+### 2. RSA/ECB/PKCS1Padding (Java)
+```java
+Cipher.getInstance("RSA/ECB/PKCS1Padding");
+```
+**Risk**: Padding oracle attacks + quantum vulnerability.
+
+### 3. OpenSSL RSA_generate_key (C++)
+```cpp
+RSA_generate_key(1024, RSA_F4, NULL, NULL);
+```
+**Risk**: Payment gateway using deprecated, quantum-vulnerable API.
+
+## Remediation Path
+1. **Short-term**: Upgrade to RSA-3072 or ECDSA P-384.
+2. **Medium-term**: Implement cryptographic agility layer.
+3. **Long-term**: Migrate to ML-KEM + ML-DSA (NIST PQC standards).

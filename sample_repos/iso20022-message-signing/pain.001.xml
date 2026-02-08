@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ISO 20022 pain.001.001.03 - Payment Initiation Message -->
+<!-- VULNERABILITY: RSA-SHA256 XML Digital Signature -->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.03">
+    <CstmrCdtTrfInitn>
+        <GrpHdr>
+            <MsgId>MSG-2024-001-PAYNET</MsgId>
+            <CreDtTm>2024-01-15T10:30:00</CreDtTm>
+            <NbOfTxs>1</NbOfTxs>
+            <CtrlSum>50000.00</CtrlSum>
+            <InitgPty>
+                <Nm>PayNet Malaysia</Nm>
+                <Id><OrgId><BICOrBEI>PABORMY2XXX</BICOrBEI></OrgId></Id>
+            </InitgPty>
+        </GrpHdr>
+        <PmtInf>
+            <PmtInfId>RTGS-2024-001</PmtInfId>
+            <PmtMtd>TRF</PmtMtd>
+            <BtchBookg>false</BtchBookg>
+            <NbOfTxs>1</NbOfTxs>
+            <CtrlSum>50000.00</CtrlSum>
+            <ReqdExctnDt>2024-01-15</ReqdExctnDt>
+            <Dbtr>
+                <Nm>Maybank Berhad</Nm>
+            </Dbtr>
+            <DbtrAcct>
+                <Id><IBAN>MY12MBBEMYKL00001234567890</IBAN></Id>
+            </DbtrAcct>
+            <DbtrAgt>
+                <FinInstnId><BIC>MABORMY2XXX</BIC></FinInstnId>
+            </DbtrAgt>
+            <CdtTrfTxInf>
+                <PmtId><EndToEndId>E2E-001-SETTLEMENT</EndToEndId></PmtId>
+                <Amt><InstdAmt Ccy="MYR">50000.00</InstdAmt></Amt>
+                <CdtrAgt>
+                    <FinInstnId><BIC>CIABORMY2XXX</BIC></FinInstnId>
+                </CdtrAgt>
+                <Cdtr><Nm>CIMB Bank Berhad</Nm></Cdtr>
+                <CdtrAcct>
+                    <Id><IBAN>MY34CIMB00009876543210</IBAN></Id>
+                </CdtrAcct>
+            </CdtTrfTxInf>
+        </PmtInf>
+    </CstmrCdtTrfInitn>
+    
+    <!-- VULNERABILITY: XML Digital Signature using RSA-SHA256 -->
+    <ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+        <ds:SignedInfo>
+            <ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
+            <ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>
+            <ds:Reference URI="">
+                <ds:Transforms>
+                    <ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>
+                </ds:Transforms>
+                <ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
+                <ds:DigestValue>dGhpcyBpcyBhIHNhbXBsZSBkaWdlc3Q=</ds:DigestValue>
+            </ds:Reference>
+        </ds:SignedInfo>
+        <ds:SignatureValue>
+            TUlJRXBBSUJBQUtDQVFFQTc1LiR4LiBNSUlFcEFJQkFBS0NBUUVBN...
+        </ds:SignatureValue>
+    </ds:Signature>
+</Document>
