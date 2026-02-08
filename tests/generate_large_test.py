@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 # Create a 10MB file with a PQC vulnerability at the end
@@ -18,4 +19,4 @@ with open(file_path, "w") as f:
     f.write("MIIEpAIBAAKCAQEA75...\n")
     f.write("-----END RSA PRIVATE KEY-----\n")
 
-print(f"Created {file_path} ({os.path.getsize(file_path)} bytes)")
+print(f"Created {file_path} ({file_path.stat().st_size} bytes)")
