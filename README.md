@@ -30,22 +30,89 @@ Built with a focus on lattice-based cryptography resilience, the tool supports a
 
 ---
 
-## Architecture
+---
 
-LatticeGuard utilizes a distributed architecture orchestrated via Docker:
+## Architecture & Data Flow
 
-1.  **Backend (API)**: FastAPI server managing job queues and reporting.
-2.  **Worker (Agent)**: Scalable nodes performing deep AST analysis and AI-tiered auditing.
-3.  **Redis**: Message broker for task distribution and state management.
+LatticeGuard utilizes a distributed, asynchronous architecture designed for high-throughput enterprise scanning.
+
+### System Architecture
+The system consists of three main tiers orchestrated via Docker Compose:
+1.  **Backend (FastAPI)**: Manages job lifecycle, provides REST endpoints for CI/CD, and serves reporting data.
+2.  **Message Broker (Redis)**: Orchestrates tasks and handles real-time status updates via Pub/Sub.
+3.  **Worker Fleet**: Decentralized nodes that execute the heavy lifting—cloning repos, running SAST/SCA scanners, and managing the AI agent loop.
 
 ```mermaid
-graph TD
-    Client[CLI / Web UI] -->|POST /scan| API[Backend API]
-    API -->|Queue| Redis[(Redis)]
-    Redis -->|Process| Worker[Analysis Worker]
-    Worker -->|Audit| Gemini[Gemini 1.5 Pro]
-    Worker -->|Store| DB[(Database)]
+graph TB
+    subgraph ClientLayer [Client Layer]
+        CLI[LG CLI]
+        UI[Agility Dashboard]
+    end
+
+    subgraph APICloud [LatticeGuard Cloud Boundary]
+        API[FastAPI Backend]
+        Redis[(Redis Queue)]
+        
+        subgraph WorkerFleet [Worker Fleet]
+            W1[Analysis Worker]
+            W1 --- S[Multi-Scanner Engine]
+            S --- S1[Tree-sitter AST]
+            S --- S2[SCA Transitive]
+            S --- S3[PQC Prober]
+            
+            W1 --- Agents[Agentic Layer]
+            Agents --- A1[Planner Agent]
+            Agents --- A2[File Analyst]
+            Agents --- A3[Assessor]
+        end
+        
+        DB[(SQLite / Postgres)]
+    end
+
+    subgraph External [External Resources]
+        Git[Source Control]
+        Gemini[[Gemini 1.5 Pro]]
+        Providers[AWS / GitHub APIs]
+    end
+
+    CLI -->|Job Trigger| API
+    API -->|Queue Task| Redis
+    Redis -->|Consume| W1
+    W1 -->|Clone| Git
+    W1 -->|Audit| Gemini
+    W1 -->|Verify| Providers
+    W1 -->|Persist| DB
+    UI -->|Query| API
 ```
+
+### Analysis Pipeline Flow
+The discovery engine operates in four tiered stages to maximize speed and accuracy:
+
+```mermaid
+flowchart TD
+    Start([Scan Triggered]) --> P1[<b>Phase 1: Strategize</b><br/>Planner Agent fingerprints stack]
+    P1 --> P2[<b>Phase 2: Fast Discovery</b><br/>Parallel Deterministic Scanners]
+    
+    subgraph Scanners [Discovery Scanners]
+        direction LR
+        S1[AST/SAST]
+        S2[Transitive SCA]
+        S3[Secret Verified]
+        S4[Network PQC]
+    end
+    
+    P2 --- Scanners
+    Scanners --> Suspects{Suspects Found?}
+    
+    Suspects -- No --> End([No Risks Detected])
+    Suspects -- Yes --> P3[<b>Phase 3: Deep Audit</b><br/>Tiered AI Triage Flash/Pro]
+    
+    P3 --> P4[<b>Phase 4: Risk Assessment</b><br/>HNDL Scoring & Remediation]
+    P4 --> Reports[/PDF & CBOM Reports/]
+    Reports --> End
+```
+
+---
 
 ---
 
