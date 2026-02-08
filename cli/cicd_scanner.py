@@ -545,10 +545,205 @@ Examples:
     probe_parser.add_argument("--format", choices=["table", "json"], default="table", help="Output format")
     probe_parser.add_argument("-o", "--output", help="Output file path")
     
+    # EASM command - External Attack Surface Management
+    easm_parser = subparsers.add_parser("easm", help="Discover external attack surface using Shodan, Censys, crt.sh")
+    easm_parser.add_argument("target", help="Target domain (e.g., example.com) or organization name")
+    easm_parser.add_argument("--type", choices=["domain", "org"], default="domain", help="Search type (default: domain)")
+    easm_parser.add_argument("--sources", help="Comma-separated sources: shodan,censys,crt.sh (default: all available)")
+    easm_parser.add_argument("--probe", action="store_true", help="Also probe discovered assets for PQC readiness")
+    easm_parser.add_argument("--format", choices=["table", "json"], default="table", help="Output format")
+    easm_parser.add_argument("-o", "--output", help="Output file path")
+    
+    # SSL Deep Analysis command
+    ssl_deep_parser = subparsers.add_parser("ssl-deep", help="Deep SSL/TLS analysis via SSLLabs")
+    ssl_deep_parser.add_argument("hostname", help="Hostname to analyze")
+    ssl_deep_parser.add_argument("--no-cache", action="store_true", help="Force fresh scan (slow, rate-limited)")
+    ssl_deep_parser.add_argument("--format", choices=["table", "json"], default="table", help="Output format")
+    
     args = parser.parse_args()
     
     if not args.command:
         parser.print_help()
+        sys.exit(0)
+    
+    # Handle EASM command - External Attack Surface Management
+    if args.command == "easm":
+        from scanner.easm import EASMManager, DiscoveredAsset
+        
+        manager = EASMManager()
+        sources_available = manager.get_available_sources()
+        
+        print(f"🌐 EASM Discovery for: {args.target}", file=sys.stderr)
+        print(f"   Available sources: {', '.join(sources_available)}", file=sys.stderr)
+        
+        # Parse sources if specified
+        sources = None
+        if args.sources:
+            sources = [s.strip() for s in args.sources.split(",")]
+        
+        # Discover assets
+        if args.type == "org":
+            if not manager.shodan.is_available():
+                print("❌ Organization search requires SHODAN_API_KEY", file=sys.stderr)
+                sys.exit(1)
+            assets = manager.discover_organization(args.target)
+        else:
+            assets = manager.discover_domain(args.target, sources)
+        
+        print(f"   Discovered: {len(assets)} unique assets", file=sys.stderr)
+        
+        # Optionally probe assets for PQC readiness
+        probe_results = None
+        if args.probe and assets:
+            print(f"🔍 Probing {len(assets)} assets for PQC readiness...", file=sys.stderr)
+            
+            def progress_callback(result):
+                hostname = result.get("hostname", "unknown")
+                if "error" in result:
+                    print(f"   ❌ {hostname}: {result['error']}", file=sys.stderr)
+                else:
+                    score = result.get("quantum_resilience_score", 0)
+                    icon = "✅" if score >= 70 else "🟡" if score >= 40 else "🔴"
+                    print(f"   {icon} {hostname}: {score}/100", file=sys.stderr)
+            
+            probe_results = manager.batch_probe(assets, max_workers=5, callback=progress_callback)
+        
+        # Output results
+        if args.format == "json":
+            output_data = {
+                "target": args.target,
+                "type": args.type,
+                "sources_used": sources or sources_available,
+                "assets": [
+                    {
+                        "hostname": a.hostname,
+                        "ip": a.ip,
+                        "port": a.port,
+                        "source": a.source,
+                        "cipher_suite": a.cipher_suite,
+                        "key_algorithm": a.key_algorithm,
+                        "key_size": a.key_size,
+                        "certificate_issuer": a.certificate_issuer,
+                        "is_pqc_vulnerable": a.is_pqc_vulnerable
+                    }
+                    for a in assets
+                ],
+                "probe_results": probe_results
+            }
+            output_content = json.dumps(output_data, indent=2)
+        else:
+            lines = [
+                "",
+                "=" * 80,
+                f"EASM Discovery Report: {args.target}",
+                "=" * 80,
+                f"Sources: {', '.join(sources or sources_available)}",
+                f"Assets Discovered: {len(assets)}",
+                "-" * 80,
+                ""
+            ]
+            
+            for asset in assets[:50]:  # Limit to first 50
+                lines.append(f"🔗 {asset.hostname}:{asset.port}")
+                if asset.ip:
+                    lines.append(f"   IP: {asset.ip}")
+                lines.append(f"   Source: {asset.source}")
+                if asset.key_algorithm:
+                    lines.append(f"   Key: {asset.key_algorithm} ({asset.key_size or '?'} bits)")
+                if asset.certificate_issuer:
+                    lines.append(f"   Issuer: {asset.certificate_issuer}")
+                lines.append("")
+            
+            if len(assets) > 50:
+                lines.append(f"... and {len(assets) - 50} more assets")
+                lines.append("")
+            
+            if probe_results:
+                lines.append("-" * 80)
+                lines.append("PQC READINESS SUMMARY")
+                lines.append("-" * 80)
+                pqc_ready = sum(1 for r in probe_results if r.get("pqc_ready"))
+                partial = sum(1 for r in probe_results if r.get("quantum_resilience_score", 0) >= 40 and not r.get("pqc_ready"))
+                vulnerable = len(probe_results) - pqc_ready - partial
+                lines.append(f"✅ PQC-Ready: {pqc_ready}")
+                lines.append(f"🟡 Partially Ready: {partial}")
+                lines.append(f"🔴 Quantum Vulnerable: {vulnerable}")
+            
+            lines.append("=" * 80)
+            lines.append("")
+            output_content = "\n".join(lines)
+        
+        if args.output:
+            with open(args.output, "w") as f:
+                f.write(output_content)
+            print(f"✅ Report written to {args.output}", file=sys.stderr)
+        else:
+            print(output_content)
+        
+        sys.exit(0)
+    
+    # Handle SSL Deep Analysis command
+    if args.command == "ssl-deep":
+        from scanner.easm import SSLLabsScanner
+        
+        print(f"🔬 Deep SSL Analysis: {args.hostname}...", file=sys.stderr)
+        print("   Using SSLLabs API (may take 1-2 minutes for fresh scans)", file=sys.stderr)
+        
+        scanner = SSLLabsScanner()
+        result = scanner.analyze(args.hostname, from_cache=not args.no_cache)
+        
+        if "error" in result:
+            print(f"❌ Error: {result['error']}", file=sys.stderr)
+            sys.exit(1)
+        
+        if result.get("status") == "in_progress":
+            print(f"⏳ {result.get('message')}", file=sys.stderr)
+            sys.exit(1)
+        
+        if args.format == "json":
+            print(json.dumps(result, indent=2))
+        else:
+            lines = [
+                "",
+                "=" * 80,
+                f"SSL Labs Deep Analysis: {args.hostname}",
+                "=" * 80,
+                f"Overall Grade: {result.get('grade', 'N/A')}",
+                "-" * 80,
+                ""
+            ]
+            
+            for ep in result.get("endpoints", []):
+                grade = ep.get("grade", "?")
+                grade_info = scanner.get_grade_info(grade)
+                icon = "🟢" if grade in ["A+", "A", "A-"] else "🟡" if grade in ["B", "C"] else "🔴"
+                
+                lines.append(f"{icon} Endpoint: {ep.get('ip')}")
+                lines.append(f"   Grade: {grade} - {grade_info.get('description')}")
+                lines.append(f"   Protocols: {', '.join(ep.get('protocols', []))}")
+                
+                cert = ep.get("certificate", {})
+                lines.append(f"   Certificate:")
+                lines.append(f"      Subject: {cert.get('subject', 'N/A')}")
+                lines.append(f"      Key: {cert.get('key_algorithm', 'N/A')} ({cert.get('key_size', '?')} bits)")
+                lines.append(f"      Signature: {cert.get('signature_algorithm', 'N/A')}")
+                
+                # PQC Assessment
+                key_alg = (cert.get("key_algorithm") or "").upper()
+                is_pqc_vulnerable = not any(safe in key_alg for safe in ["KYBER", "DILITHIUM", "ML-KEM"])
+                lines.append(f"   PQC Status: {'🔴 Quantum Vulnerable' if is_pqc_vulnerable else '✅ PQC-Ready'}")
+                
+                vulns = ep.get("vulnerabilities", {})
+                active_vulns = [k for k, v in vulns.items() if v]
+                if active_vulns:
+                    lines.append(f"   ⚠️  Vulnerabilities: {', '.join(active_vulns)}")
+                
+                lines.append("")
+            
+            lines.append("=" * 80)
+            lines.append("")
+            print("\n".join(lines))
+        
         sys.exit(0)
     
     # Handle probe command - TLS/PQC endpoint scanning

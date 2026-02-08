@@ -450,6 +450,78 @@ python3 cli/cicd_scanner.py probe example.com -o tls_report.txt
 
 ---
 
+### `easm` - External Attack Surface Management
+
+Discover internet-facing assets using Shodan, Censys, and crt.sh.
+
+```bash
+python3 cli/cicd_scanner.py easm <target> [options]
+```
+
+| Flag | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `target` | required | - | Domain (e.g., `example.com`) or organization name |
+| `--type` | `domain\|org` | `domain` | Search type |
+| `--sources` | string | all available | Comma-separated: `shodan,censys,crt.sh` |
+| `--probe` | flag | false | Also probe discovered assets for PQC readiness |
+| `--format` | `table\|json` | `table` | Output format |
+| `-o, --output` | string | stdout | Output file path |
+
+**Required Environment Variables:**
+- `SHODAN_API_KEY` - For Shodan integration (optional)
+- `CENSYS_API_ID` / `CENSYS_API_SECRET` - For Censys (optional)
+- crt.sh works without API keys
+
+**Examples:**
+```bash
+# Discover subdomains via certificate transparency
+python3 cli/cicd_scanner.py easm example.com --sources crt.sh
+
+# Full discovery with PQC probing
+python3 cli/cicd_scanner.py easm paynet.my --probe
+
+# Organization search (requires Shodan)
+python3 cli/cicd_scanner.py easm "PayNet Sdn Bhd" --type org
+```
+
+---
+
+### `ssl-deep` - Deep SSL/TLS Analysis
+
+Run comprehensive SSL/TLS analysis using SSLLabs (no API key required).
+
+```bash
+python3 cli/cicd_scanner.py ssl-deep <hostname> [options]
+```
+
+| Flag | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `hostname` | required | - | Hostname to analyze |
+| `--no-cache` | flag | false | Force fresh scan (slow, rate-limited) |
+| `--format` | `table\|json` | `table` | Output format |
+
+**Examples:**
+```bash
+# Cached analysis (fast)
+python3 cli/cicd_scanner.py ssl-deep www.bnm.gov.my
+
+# Force fresh scan
+python3 cli/cicd_scanner.py ssl-deep example.com --no-cache
+
+# JSON output
+python3 cli/cicd_scanner.py ssl-deep paynet.my --format json
+```
+
+**Output Includes:**
+- SSL Grade (A+ to F)
+- Protocol versions (TLS 1.2, 1.3)
+- Cipher suites
+- Certificate details (key algorithm, signature)
+- Known vulnerabilities (POODLE, Heartbleed, ROBOT, etc.)
+- PQC readiness assessment
+
+---
+
 ### REST API
 
 Automate scans into your CI/CD pipelines:

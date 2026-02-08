@@ -1,87 +1,593 @@
 """
-External Attack Surface Management (EASM) Module
-Discovering shadow IT and legacy protocols that increase HNDL risk.
+LatticeGuard - Post-Quantum Cryptography Assessment Tool
+Copyright (c) 2026 Waqas Khalid Obeidy
 """
-import socket
+
+"""
+External Attack Surface Management (EASM) Scanner
+
+Integrates with:
+- Shodan: Internet-wide asset discovery
+- Censys: Certificate transparency & host search
+- crt.sh: Free certificate transparency lookup
+- SSLLabs: Deep TLS configuration analysis
+"""
+
 import os
 import json
-from typing import List, Dict, Optional
-from schemas.models import InventoryItem
+import requests
+import socket
+from typing import List, Dict, Optional, Any
+from dataclasses import dataclass, asdict, field
+from datetime import datetime
+import concurrent.futures
 
-class EASMScanner:
+
+@dataclass
+class DiscoveredAsset:
+    """Represents a discovered internet-facing asset"""
+    ip: str
+    hostname: str
+    port: int
+    source: str  # shodan, censys, crt.sh
+    cipher_suite: Optional[str] = None
+    tls_version: Optional[str] = None
+    certificate_issuer: Optional[str] = None
+    certificate_subject: Optional[str] = None
+    certificate_expiry: Optional[str] = None
+    key_algorithm: Optional[str] = None
+    key_size: Optional[int] = None
+    is_pqc_vulnerable: bool = True
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+class ShodanScanner:
     """
-    Scans for external assets and legacy protocols.
-    Supports API hooks for Shodan/Censys and active port auditing.
+    Shodan integration for internet-wide asset discovery.
+    
+    Requires SHODAN_API_KEY environment variable.
+    Free tier: 100 queries/month
     """
     
-    # Legacy protocols with high HNDL (Harvest Now, Decrypt Later) risk
-    LEGACY_PROTOCOLS = {
-        21: {"name": "FTP", "risk": "critical", "description": "Unencrypted file transfer. Highly vulnerable to interception."},
-        23: {"name": "Telnet", "risk": "critical", "description": "Unencrypted remote shell. Credentials sent in cleartext."},
-        110: {"name": "POP3", "risk": "high", "description": "Unencrypted email retrieval."},
-        143: {"name": "IMAP", "risk": "high", "description": "Unencrypted email access."},
-        3389: {"name": "RDP", "risk": "medium", "description": "Remote Desktop. Ensure NLA and strong TLS are enforced."},
-        5900: {"name": "VNC", "risk": "high", "description": "Unencrypted remote desktop. Limited crypto agility."},
-    }
-
-    def __init__(self, target_cidr: str = "127.0.0.1"):
-        self.target = target_cidr
-        self.shodan_api_key = os.getenv("SHODAN_API_KEY")
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or os.environ.get("SHODAN_API_KEY")
+        self.base_url = "https://api.shodan.io"
         
-    def discover_shadow_it(self) -> List[InventoryItem]:
-        """
-        Main discovery loop for external assets.
-        """
-        findings = []
+    def is_available(self) -> bool:
+        return bool(self.api_key)
+    
+    def search_organization(self, org: str, limit: int = 100) -> List[DiscoveredAsset]:
+        """Search for SSL/TLS endpoints belonging to an organization"""
+        if not self.api_key:
+            return []
         
-        # 1. API-based discovery (if keys present)
-        if self.shodan_api_key:
-            findings.extend(self._query_shodan())
+        try:
+            url = f"{self.base_url}/shodan/host/search"
+            params = {
+                "key": self.api_key,
+                "query": f'org:"{org}" ssl.cert.issuer.cn:*',
+                "limit": limit
+            }
             
-        # 2. Basic active protocol audit for legacy services
-        findings.extend(self._active_protocol_audit())
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            
+            assets = []
+            for match in data.get("matches", []):
+                ssl_info = match.get("ssl", {})
+                cert = ssl_info.get("cert", {})
+                cipher = ssl_info.get("cipher", {})
+                
+                asset = DiscoveredAsset(
+                    ip=match.get("ip_str", ""),
+                    hostname=", ".join(match.get("hostnames", [])) or match.get("ip_str", ""),
+                    port=match.get("port", 443),
+                    source="shodan",
+                    cipher_suite=cipher.get("name"),
+                    tls_version=ssl_info.get("version"),
+                    certificate_issuer=cert.get("issuer", {}).get("CN"),
+                    certificate_subject=cert.get("subject", {}).get("CN"),
+                    certificate_expiry=cert.get("expires"),
+                    key_algorithm=cert.get("pubkey", {}).get("type"),
+                    key_size=cert.get("pubkey", {}).get("bits"),
+                    is_pqc_vulnerable=self._is_pqc_vulnerable(cert.get("pubkey", {}).get("type")),
+                    metadata={
+                        "org": match.get("org"),
+                        "asn": match.get("asn"),
+                        "country": match.get("location", {}).get("country_name"),
+                        "product": match.get("product"),
+                        "version": match.get("version")
+                    }
+                )
+                assets.append(asset)
+            
+            return assets
+            
+        except Exception as e:
+            print(f"Shodan error: {e}")
+            return []
+    
+    def search_domain(self, domain: str) -> List[DiscoveredAsset]:
+        """Search for SSL/TLS endpoints for a specific domain"""
+        if not self.api_key:
+            return []
         
-        return findings
+        try:
+            url = f"{self.base_url}/dns/domain/{domain}"
+            params = {"key": self.api_key}
+            
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            
+            assets = []
+            for record in data.get("data", []):
+                if record.get("type") in ["A", "AAAA"]:
+                    subdomain = record.get("subdomain", "")
+                    hostname = f"{subdomain}.{domain}" if subdomain else domain
+                    
+                    asset = DiscoveredAsset(
+                        ip=record.get("value", ""),
+                        hostname=hostname,
+                        port=443,
+                        source="shodan",
+                        is_pqc_vulnerable=True
+                    )
+                    assets.append(asset)
+            
+            return assets
+            
+        except Exception as e:
+            print(f"Shodan domain error: {e}")
+            return []
+    
+    def _is_pqc_vulnerable(self, key_type: Optional[str]) -> bool:
+        if not key_type:
+            return True
+        key_upper = key_type.upper()
+        pqc_safe = ["KYBER", "DILITHIUM", "ML-KEM", "ML-DSA", "SPHINCS"]
+        return not any(safe in key_upper for safe in pqc_safe)
 
-    def _query_shodan(self) -> List[InventoryItem]:
-        """Placeholder for Shodan API integration"""
-        # Logic to query Shodan for the target CIDR/Host
-        # looking for 'pqc' tags or legacy banners
-        print(f"[*] Querying Shodan for {self.target}...")
-        return []
 
-    def _active_protocol_audit(self) -> List[InventoryItem]:
-        """
-        Checks for common legacy ports that are low-agility.
-        """
-        findings = []
-        # For demonstration/safety, we only check a single host or small range
-        target_host = self.target.split('/')[0] if '/' in self.target else self.target
+class CensysScanner:
+    """
+    Censys integration for certificate transparency and host discovery.
+    
+    Requires CENSYS_API_ID and CENSYS_API_SECRET environment variables.
+    Free tier: 250 queries/month
+    """
+    
+    def __init__(self, api_id: Optional[str] = None, api_secret: Optional[str] = None):
+        self.api_id = api_id or os.environ.get("CENSYS_API_ID")
+        self.api_secret = api_secret or os.environ.get("CENSYS_API_SECRET")
+        self.base_url = "https://search.censys.io/api/v2"
         
-        print(f"[*] Auditing legacy protocols on {target_host}...")
+    def is_available(self) -> bool:
+        return bool(self.api_id and self.api_secret)
+    
+    def search_hosts(self, query: str, limit: int = 100) -> List[DiscoveredAsset]:
+        """Search for hosts matching a query"""
+        if not self.is_available():
+            return []
         
-        for port, info in self.LEGACY_PROTOCOLS.items():
-            try:
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.settimeout(1.0)
-                    result = s.connect_ex((target_host, port))
-                    if result == 0:
-                        findings.append(InventoryItem(
-                            id=f"easm:{target_host}:{port}",
-                            path=f"{target_host}:{port}",
-                            line=0,
-                            name=f"Shadow IT: {info['name']} Service Detected",
-                            category="network",
-                            algorithm="None/Legacy",
-                            key_size=0,
+        try:
+            url = f"{self.base_url}/hosts/search"
+            params = {
+                "q": query,
+                "per_page": min(limit, 100)
+            }
+            
+            response = requests.get(
+                url, 
+                params=params, 
+                auth=(self.api_id, self.api_secret),
+                timeout=30
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            assets = []
+            for hit in data.get("result", {}).get("hits", []):
+                services = hit.get("services", [])
+                for svc in services:
+                    if svc.get("service_name") in ["HTTP", "HTTPS"]:
+                        tls = svc.get("tls", {})
+                        cert = tls.get("certificates", {}).get("leaf", {}).get("parsed", {})
+                        
+                        asset = DiscoveredAsset(
+                            ip=hit.get("ip", ""),
+                            hostname=hit.get("name", hit.get("ip", "")),
+                            port=svc.get("port", 443),
+                            source="censys",
+                            tls_version=tls.get("version_selected"),
+                            cipher_suite=tls.get("cipher_selected"),
+                            certificate_issuer=cert.get("issuer_dn"),
+                            certificate_subject=cert.get("subject_dn"),
+                            key_algorithm=cert.get("subject_key_info", {}).get("key_algorithm", {}).get("name"),
+                            key_size=cert.get("subject_key_info", {}).get("key_size"),
                             is_pqc_vulnerable=True,
-                            description=f"Legacy protocol {info['name']} detected. {info['description']}",
-                            remediation=f"Disable {info['name']} and migrate to encrypted alternatives (SFTP, SSH, IMAPS).",
-                            source_type="network",
-                            risk_level=info["risk"],
-                            hndl_score=90.0
-                        ))
-            except Exception:
+                            metadata={
+                                "autonomous_system": hit.get("autonomous_system", {}),
+                                "location": hit.get("location", {})
+                            }
+                        )
+                        assets.append(asset)
+            
+            return assets
+            
+        except Exception as e:
+            print(f"Censys error: {e}")
+            return []
+    
+    def search_certificates(self, domain: str, limit: int = 100) -> List[DiscoveredAsset]:
+        """Search certificate transparency logs for a domain"""
+        if not self.is_available():
+            return []
+        
+        try:
+            url = f"{self.base_url}/certificates/search"
+            params = {
+                "q": f"names: {domain}",
+                "per_page": min(limit, 100)
+            }
+            
+            response = requests.get(
+                url, 
+                params=params, 
+                auth=(self.api_id, self.api_secret),
+                timeout=30
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            assets = []
+            seen_names = set()
+            
+            for hit in data.get("result", {}).get("hits", []):
+                names = hit.get("names", [])
+                for name in names:
+                    if name not in seen_names and domain in name:
+                        seen_names.add(name)
+                        asset = DiscoveredAsset(
+                            ip="",
+                            hostname=name,
+                            port=443,
+                            source="censys-ct",
+                            certificate_issuer=hit.get("issuer_dn"),
+                            certificate_subject=hit.get("subject_dn"),
+                            is_pqc_vulnerable=True
+                        )
+                        assets.append(asset)
+            
+            return assets
+            
+        except Exception as e:
+            print(f"Censys CT error: {e}")
+            return []
+
+
+class CrtShScanner:
+    """
+    crt.sh integration for certificate transparency lookup.
+    
+    FREE - No API key required!
+    """
+    
+    def __init__(self):
+        self.base_url = "https://crt.sh"
+    
+    def is_available(self) -> bool:
+        return True  # Always available, no API key needed
+    
+    def search_domain(self, domain: str, include_expired: bool = False) -> List[DiscoveredAsset]:
+        """Search certificate transparency logs for subdomains"""
+        try:
+            url = f"{self.base_url}/?q=%.{domain}&output=json"
+            if not include_expired:
+                url += "&exclude=expired"
+            
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            
+            # Handle empty response
+            if not response.text.strip():
+                return []
+            
+            data = response.json()
+            
+            assets = []
+            seen_names = set()
+            
+            for cert in data:
+                name = cert.get("name_value", "")
+                # Handle wildcard and multi-name certs
+                names = name.replace("*.", "").split("\n")
+                
+                for n in names:
+                    n = n.strip().lower()
+                    if n and n not in seen_names and domain in n:
+                        seen_names.add(n)
+                        
+                        asset = DiscoveredAsset(
+                            ip="",
+                            hostname=n,
+                            port=443,
+                            source="crt.sh",
+                            certificate_issuer=cert.get("issuer_name"),
+                            certificate_expiry=cert.get("not_after"),
+                            is_pqc_vulnerable=True,
+                            metadata={
+                                "cert_id": cert.get("id"),
+                                "entry_timestamp": cert.get("entry_timestamp"),
+                                "not_before": cert.get("not_before"),
+                                "not_after": cert.get("not_after")
+                            }
+                        )
+                        assets.append(asset)
+            
+            return assets
+            
+        except Exception as e:
+            print(f"crt.sh error: {e}")
+            return []
+
+
+class SSLLabsScanner:
+    """
+    SSLLabs integration for deep TLS configuration analysis.
+    
+    FREE - No API key required!
+    Rate limited: 1 scan per host per hour (uses cache)
+    """
+    
+    def __init__(self):
+        self.base_url = "https://api.ssllabs.com/api/v3"
+    
+    def is_available(self) -> bool:
+        return True
+    
+    def analyze(self, hostname: str, from_cache: bool = True) -> Dict[str, Any]:
+        """
+        Analyze a host's SSL/TLS configuration.
+        
+        Args:
+            hostname: Target hostname
+            from_cache: Use cached results if available (recommended)
+        """
+        try:
+            # Start analysis or get cached results
+            url = f"{self.base_url}/analyze"
+            params = {
+                "host": hostname,
+                "fromCache": "on" if from_cache else "off",
+                "all": "done"  # Wait for full results
+            }
+            
+            response = requests.get(url, params=params, timeout=60)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Check status
+            status = data.get("status")
+            if status == "ERROR":
+                return {"error": data.get("statusMessage")}
+            
+            if status == "IN_PROGRESS":
+                return {"status": "in_progress", "message": "Analysis in progress, try again later"}
+            
+            # Parse results
+            result = {
+                "host": data.get("host"),
+                "grade": None,
+                "endpoints": []
+            }
+            
+            for endpoint in data.get("endpoints", []):
+                grade = endpoint.get("grade") or endpoint.get("gradeTrustIgnored")
+                if grade and (result["grade"] is None or grade < result["grade"]):
+                    result["grade"] = grade
+                
+                details = endpoint.get("details", {})
+                protocols = details.get("protocols", [])
+                suites = details.get("suites", {})
+                cert = details.get("cert", {})
+                
+                ep = {
+                    "ip": endpoint.get("ipAddress"),
+                    "grade": grade,
+                    "protocols": [f"{p.get('name')} {p.get('version')}" for p in protocols],
+                    "cipher_suites": [],
+                    "certificate": {
+                        "subject": cert.get("subject"),
+                        "issuer": cert.get("issuerSubject"),
+                        "key_algorithm": cert.get("keyAlg"),
+                        "key_size": cert.get("keySize"),
+                        "signature_algorithm": cert.get("sigAlg"),
+                        "not_after": cert.get("notAfter")
+                    },
+                    "vulnerabilities": {
+                        "poodle": details.get("poodle"),
+                        "heartbleed": details.get("heartbleed"),
+                        "freak": details.get("freak"),
+                        "logjam": details.get("logjam"),
+                        "robot": details.get("robot"),
+                        "zombie_poodle": details.get("zombiePoodle"),
+                        "golden_doodle": details.get("goldenDoodle")
+                    },
+                    "forward_secrecy": details.get("forwardSecrecy"),
+                    "supports_tls13": any(p.get("version") == "1.3" for p in protocols if p.get("name") == "TLS")
+                }
+                
+                # Extract cipher suites
+                for suite_list in suites.get("list", []):
+                    ep["cipher_suites"].append(suite_list.get("name"))
+                
+                result["endpoints"].append(ep)
+            
+            return result
+            
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def get_grade_info(self, grade: str) -> Dict[str, Any]:
+        """Get information about an SSL grade"""
+        grades = {
+            "A+": {"severity": "info", "description": "Excellent - Exceptional security"},
+            "A": {"severity": "low", "description": "Good - Strong security configuration"},
+            "A-": {"severity": "low", "description": "Good - Minor issues"},
+            "B": {"severity": "medium", "description": "Fair - Some weaknesses present"},
+            "C": {"severity": "medium", "description": "Weak - Significant issues"},
+            "D": {"severity": "high", "description": "Poor - Serious vulnerabilities"},
+            "E": {"severity": "high", "description": "Very Poor - Critical issues"},
+            "F": {"severity": "critical", "description": "Fail - Severe vulnerabilities"},
+            "T": {"severity": "critical", "description": "Trust issues - Certificate problems"}
+        }
+        return grades.get(grade, {"severity": "unknown", "description": "Unknown grade"})
+
+
+class EASMManager:
+    """
+    Unified External Attack Surface Management interface.
+    
+    Coordinates all EASM scanners and provides batch scanning.
+    """
+    
+    def __init__(self):
+        self.shodan = ShodanScanner()
+        self.censys = CensysScanner()
+        self.crtsh = CrtShScanner()
+        self.ssllabs = SSLLabsScanner()
+    
+    def get_available_sources(self) -> List[str]:
+        """Return list of available data sources"""
+        sources = []
+        if self.shodan.is_available():
+            sources.append("shodan")
+        if self.censys.is_available():
+            sources.append("censys")
+        if self.crtsh.is_available():
+            sources.append("crt.sh")
+        if self.ssllabs.is_available():
+            sources.append("ssllabs")
+        return sources
+    
+    def discover_domain(self, domain: str, sources: Optional[List[str]] = None) -> List[DiscoveredAsset]:
+        """
+        Discover all assets for a domain using available sources.
+        
+        Args:
+            domain: Target domain (e.g., "example.com")
+            sources: List of sources to use, or None for all available
+        """
+        all_assets = []
+        available = self.get_available_sources()
+        sources = sources or available
+        
+        for source in sources:
+            if source not in available:
                 continue
                 
-        return findings
+            if source == "shodan" and self.shodan.is_available():
+                assets = self.shodan.search_domain(domain)
+                all_assets.extend(assets)
+                
+            elif source == "censys" and self.censys.is_available():
+                assets = self.censys.search_certificates(domain)
+                all_assets.extend(assets)
+                
+            elif source == "crt.sh":
+                assets = self.crtsh.search_domain(domain)
+                all_assets.extend(assets)
+        
+        # Deduplicate by hostname
+        seen = set()
+        unique = []
+        for asset in all_assets:
+            key = f"{asset.hostname}:{asset.port}"
+            if key not in seen:
+                seen.add(key)
+                unique.append(asset)
+        
+        return unique
+    
+    def discover_organization(self, org: str) -> List[DiscoveredAsset]:
+        """Discover all assets for an organization (requires Shodan)"""
+        if not self.shodan.is_available():
+            print("Warning: Shodan API key required for organization search")
+            return []
+        
+        return self.shodan.search_organization(org)
+    
+    def deep_analyze(self, hostname: str) -> Dict[str, Any]:
+        """Run deep SSL/TLS analysis using SSLLabs"""
+        return self.ssllabs.analyze(hostname)
+    
+    def batch_probe(
+        self, 
+        assets: List[DiscoveredAsset], 
+        max_workers: int = 5,
+        callback=None
+    ) -> List[Dict[str, Any]]:
+        """
+        Probe multiple assets for PQC readiness in parallel.
+        
+        Args:
+            assets: List of discovered assets
+            max_workers: Number of concurrent probes
+            callback: Optional function to call after each probe
+        """
+        from scanner.network import NetworkScanner
+        
+        results = []
+        
+        def probe_asset(asset: DiscoveredAsset) -> Dict[str, Any]:
+            try:
+                # Resolve hostname if IP not available
+                hostname = asset.hostname.split(",")[0].strip()
+                if not asset.ip:
+                    try:
+                        asset.ip = socket.gethostbyname(hostname)
+                    except:
+                        pass
+                
+                scanner = NetworkScanner(hostname, asset.port)
+                findings = scanner.scan()
+                score = scanner.calculate_resilience_score()
+                
+                return {
+                    "hostname": hostname,
+                    "ip": asset.ip,
+                    "port": asset.port,
+                    "source": asset.source,
+                    "quantum_resilience_score": score,
+                    "pqc_ready": score >= 70,
+                    "findings": [
+                        {
+                            "name": f.name,
+                            "algorithm": f.algorithm,
+                            "is_pqc_vulnerable": f.is_pqc_vulnerable
+
+                        }
+                        for f in findings
+                    ]
+                }
+            except Exception as e:
+                return {
+                    "hostname": asset.hostname,
+                    "ip": asset.ip,
+                    "port": asset.port,
+                    "source": asset.source,
+                    "error": str(e)
+                }
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(probe_asset, asset): asset for asset in assets}
+            
+            for future in concurrent.futures.as_completed(futures):
+                result = future.result()
+                results.append(result)
+                if callback:
+                    callback(result)
+        
+        return results
