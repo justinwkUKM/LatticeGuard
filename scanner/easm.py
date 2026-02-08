@@ -108,41 +108,148 @@ class ShodanScanner:
             print(f"Shodan error: {e}")
             return []
     
-    def search_domain(self, domain: str) -> List[DiscoveredAsset]:
-        """Search for SSL/TLS endpoints for a specific domain"""
+    def search_domain(self, domain: str, limit: int = 100) -> List[DiscoveredAsset]:
+        """
+        Search for SSL/TLS endpoints for a specific domain using host search.
+        Uses /shodan/host/search which works on free tier.
+        """
         if not self.api_key:
             return []
         
         try:
-            url = f"{self.base_url}/dns/domain/{domain}"
-            params = {"key": self.api_key}
+            # Use host search with SSL filter - works on free tier
+            url = f"{self.base_url}/shodan/host/search"
+            params = {
+                "key": self.api_key,
+                "query": f'hostname:{domain} ssl',
+                "limit": limit
+            }
             
             response = requests.get(url, params=params, timeout=30)
             response.raise_for_status()
             data = response.json()
             
             assets = []
-            for record in data.get("data", []):
-                if record.get("type") in ["A", "AAAA"]:
-                    subdomain = record.get("subdomain", "")
-                    hostname = f"{subdomain}.{domain}" if subdomain else domain
-                    
-                    asset = DiscoveredAsset(
-                        ip=record.get("value", ""),
-                        hostname=hostname,
-                        port=443,
-                        source="shodan",
-                        is_pqc_vulnerable=True
-                    )
-                    assets.append(asset)
+            for match in data.get("matches", []):
+                ssl_info = match.get("ssl", {})
+                cert = ssl_info.get("cert", {})
+                cipher = ssl_info.get("cipher", {})
+                hostnames = match.get("hostnames", [])
+                
+                asset = DiscoveredAsset(
+                    ip=match.get("ip_str", ""),
+                    hostname=", ".join(hostnames) if hostnames else match.get("ip_str", ""),
+                    port=match.get("port", 443),
+                    source="shodan",
+                    cipher_suite=cipher.get("name"),
+                    tls_version=ssl_info.get("version"),
+                    certificate_issuer=cert.get("issuer", {}).get("CN"),
+                    certificate_subject=cert.get("subject", {}).get("CN"),
+                    certificate_expiry=cert.get("expires"),
+                    key_algorithm=cert.get("pubkey", {}).get("type"),
+                    key_size=cert.get("pubkey", {}).get("bits"),
+                    is_pqc_vulnerable=self._is_pqc_vulnerable(cert.get("pubkey", {}).get("type")),
+                    metadata={
+                        "org": match.get("org"),
+                        "asn": match.get("asn"),
+                        "country": match.get("location", {}).get("country_name"),
+                        "product": match.get("product"),
+                        "version": match.get("version")
+                    }
+                )
+                assets.append(asset)
             
             return assets
             
         except Exception as e:
-            print(f"Shodan domain error: {e}")
+            print(f"Shodan search error: {e}")
             return []
+
+    def search_ip(self, ip: str) -> Optional[DiscoveredAsset]:
+        """
+        Look up a single IP address (FREE - no credits required).
+        This endpoint works on all Shodan plans including free/oss tier.
+        """
+        if not self.api_key:
+            return None
+        
+        try:
+            url = f"{self.base_url}/shodan/host/{ip}"
+            params = {"key": self.api_key}
+            
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Get SSL info from first HTTPS port
+            ssl_info = {}
+            cipher = {}
+            cert = {}
+            port = 443
+            
+            for item in data.get("data", []):
+                if "ssl" in item:
+                    ssl_info = item.get("ssl", {})
+                    cert = ssl_info.get("cert", {})
+                    cipher = ssl_info.get("cipher", {})
+                    port = item.get("port", 443)
+                    break
+            
+            return DiscoveredAsset(
+                ip=data.get("ip_str", ip),
+                hostname=", ".join(data.get("hostnames", [])) or ip,
+                port=port,
+                source="shodan",
+                cipher_suite=cipher.get("name"),
+                tls_version=ssl_info.get("version"),
+                certificate_issuer=cert.get("issuer", {}).get("CN"),
+                certificate_subject=cert.get("subject", {}).get("CN"),
+                certificate_expiry=cert.get("expires"),
+                key_algorithm=cert.get("pubkey", {}).get("type"),
+                key_size=cert.get("pubkey", {}).get("bits"),
+                is_pqc_vulnerable=self._is_pqc_vulnerable(cert.get("pubkey", {}).get("type")),
+                metadata={
+                    "org": data.get("org"),
+                    "asn": data.get("asn"),
+                    "country": data.get("country_name"),
+                    "ports": data.get("ports", [])
+                }
+            )
+            
+        except Exception as e:
+            print(f"Shodan IP lookup error: {e}")
+            return None
+    
+    def search_domain_via_dns(self, domain: str) -> List[DiscoveredAsset]:
+        """
+        Search domain by resolving DNS and looking up the IP (FREE tier compatible).
+        """
+        if not self.api_key:
+            return []
+        
+        assets = []
+        
+        try:
+            # Resolve domain to IP
+            ip = socket.gethostbyname(domain)
+            print(f"   Resolved {domain} → {ip}")
+            
+            # Look up the IP (free)
+            asset = self.search_ip(ip)
+            if asset:
+                # Update hostname to domain
+                asset.hostname = domain
+                assets.append(asset)
+                
+        except socket.gaierror:
+            print(f"   Could not resolve {domain}")
+        except Exception as e:
+            print(f"   DNS lookup error: {e}")
+        
+        return assets
     
     def _is_pqc_vulnerable(self, key_type: Optional[str]) -> bool:
+
         if not key_type:
             return True
         key_upper = key_type.upper()
@@ -154,17 +261,35 @@ class CensysScanner:
     """
     Censys integration for certificate transparency and host discovery.
     
-    Requires CENSYS_API_ID and CENSYS_API_SECRET environment variables.
+    Supports both:
+    - Single token format: CENSYS_API_TOKEN (e.g., censys_XXX_YYY)
+    - Separate credentials: CENSYS_API_ID + CENSYS_API_SECRET
+    
     Free tier: 250 queries/month
     """
     
-    def __init__(self, api_id: Optional[str] = None, api_secret: Optional[str] = None):
-        self.api_id = api_id or os.environ.get("CENSYS_API_ID")
-        self.api_secret = api_secret or os.environ.get("CENSYS_API_SECRET")
+    def __init__(self, api_token: Optional[str] = None, api_id: Optional[str] = None, api_secret: Optional[str] = None):
+        # Support single token format: censys_XXX_YYY (split into ID and Secret)
+        token = api_token or os.environ.get("CENSYS_API_TOKEN")
+        
+        if token and token.startswith("censys_"):
+            # Parse single token: censys_ID_SECRET
+            parts = token.split("_", 2)  # Split into max 3 parts
+            if len(parts) >= 3:
+                self.api_id = f"{parts[0]}_{parts[1]}"  # censys_ID
+                self.api_secret = parts[2]  # SECRET
+            else:
+                self.api_id = token
+                self.api_secret = ""
+        else:
+            self.api_id = api_id or os.environ.get("CENSYS_API_ID")
+            self.api_secret = api_secret or os.environ.get("CENSYS_API_SECRET")
+        
         self.base_url = "https://search.censys.io/api/v2"
         
     def is_available(self) -> bool:
         return bool(self.api_id and self.api_secret)
+
     
     def search_hosts(self, query: str, limit: int = 100) -> List[DiscoveredAsset]:
         """Search for hosts matching a query"""
@@ -489,7 +614,11 @@ class EASMManager:
                 continue
                 
             if source == "shodan" and self.shodan.is_available():
+                # Try search first, fall back to DNS+IP lookup (free tier)
                 assets = self.shodan.search_domain(domain)
+                if not assets:
+                    # Fallback: resolve DNS → lookup IP (works on free/oss tier)
+                    assets = self.shodan.search_domain_via_dns(domain)
                 all_assets.extend(assets)
                 
             elif source == "censys" and self.censys.is_available():
